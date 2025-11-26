@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import { db } from "./firebase";
+import MapView, { type MapVenue } from "./MapView";
 
 type Venue = {
   id: string;
@@ -13,6 +22,17 @@ type Venue = {
   totalChargersAvailable: number;
   totalSlotsFree: number;
   status: string;
+  lat: number;
+  lng: number;
+};
+
+type City = {
+  slug: string;
+  displayName: string;
+  sponsorName: string;
+  logoUrl?: string;
+  mapCenter: { lat: number; lng: number } | null;
+  mapZoom: number;
 };
 
 function getCitySlugFromPath() {
@@ -26,15 +46,56 @@ const App: React.FC = () => {
 
   const [venues, setVenues] = useState<Venue[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadingVenues, setLoadingVenues] = useState(true);
+  const [venueError, setVenueError] = useState<string | null>(null);
+
+  const [city, setCity] = useState<City | null>(null);
+  const [loadingCity, setLoadingCity] = useState(true);
+  const [cityError, setCityError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
+    async function loadCity() {
+      setLoadingCity(true);
+      setCityError(null);
+      try {
+        const cityRef = doc(db, "cities", citySlug);
+        const snap = await getDoc(cityRef);
+        if (cancelled) return;
+
+        if (!snap.exists()) {
+          setCity(null);
+          setCityError("City configuration not found.");
+          return;
+        }
+
+        const data = snap.data() as any;
+        const mapCenter =
+          data.mapCenter && typeof data.mapCenter.lat === "number"
+            && typeof data.mapCenter.lng === "number"
+            ? { lat: data.mapCenter.lat, lng: data.mapCenter.lng }
+            : null;
+
+        setCity({
+          slug: data.slug ?? citySlug,
+          displayName: data.displayName ?? citySlug,
+          sponsorName: data.sponsorName ?? "Sponsor",
+          logoUrl: data.logoUrl ?? "",
+          mapCenter,
+          mapZoom: typeof data.mapZoom === "number" ? data.mapZoom : 13,
+        });
+      } catch (err: any) {
+        console.error("Error loading city", err);
+        setCityError("Unable to load city configuration.");
+      } finally {
+        if (!cancelled) setLoadingCity(false);
+      }
+    }
+
     async function loadVenues() {
-      setLoading(true);
-      setError(null);
+      setLoadingVenues(true);
+      setVenueError(null);
 
       try {
         const venuesRef = collection(db, "venues");
@@ -48,10 +109,10 @@ const App: React.FC = () => {
         const snapshot = await getDocs(q);
         if (cancelled) return;
 
-        const items: Venue[] = snapshot.docs.map((doc) => {
-          const data = doc.data() as any;
+        const items: Venue[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as any;
           return {
-            id: doc.id,
+            id: docSnap.id,
             citySlug: data.citySlug ?? "",
             venueName: data.venueName ?? "Unnamed location",
             address: data.address ?? "",
@@ -63,6 +124,8 @@ const App: React.FC = () => {
             totalChargersAvailable: Number(data.totalChargersAvailable ?? 0),
             totalSlotsFree: Number(data.totalSlotsFree ?? 0),
             status: data.status ?? "unknown",
+            lat: Number(data.lat ?? 0),
+            lng: Number(data.lng ?? 0),
           };
         });
 
@@ -74,14 +137,15 @@ const App: React.FC = () => {
         }
       } catch (err: any) {
         console.error("Error loading venues", err);
-        setError("Unable to load locations right now.");
+        setVenueError("Unable to load locations right now.");
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setLoadingVenues(false);
         }
       }
     }
 
+    loadCity();
     loadVenues();
 
     return () => {
@@ -91,6 +155,17 @@ const App: React.FC = () => {
 
   const selectedVenue =
     venues.find((v) => v.id === selectedId) ?? (venues.length ? venues[0] : null);
+
+  const mapVenues: MapVenue[] = venues.map((v) => ({
+    id: v.id,
+    venueName: v.venueName,
+    lat: v.lat,
+    lng: v.lng,
+  }));
+
+  const anyLoading = loadingVenues || loadingCity;
+  const headerTitle = city?.displayName ?? citySlug;
+  const sponsorName = city?.sponsorName ?? "Sponsor Name";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -102,15 +177,24 @@ const App: React.FC = () => {
           </div>
           <div className="flex flex-col">
             <span className="font-semibold tracking-tight text-sm">
-              Chargedrops
+              {headerTitle}
             </span>
             <span className="text-xs text-gray-500">
-              City: {citySlug}
+              Portable charger locations
             </span>
           </div>
         </div>
-        <div className="text-[11px] text-gray-500">
-          Powered by Sponsor Name
+        <div className="flex items-center gap-2">
+          {city?.logoUrl && (
+            <img
+              src={city.logoUrl}
+              alt={sponsorName}
+              className="h-6 w-auto object-contain"
+            />
+          )}
+          <div className="text-[11px] text-gray-500 text-right">
+            Powered by {sponsorName}
+          </div>
         </div>
       </header>
 
@@ -126,26 +210,32 @@ const App: React.FC = () => {
           </div>
 
           <div className="p-3 space-y-3">
-            {loading && (
+            {anyLoading && (
               <div className="text-xs text-gray-500">
-                Loading locations…
+                Loading city and locations…
               </div>
             )}
 
-            {error && !loading && (
+            {cityError && !anyLoading && (
               <div className="text-xs text-red-600">
-                {error}
+                {cityError}
               </div>
             )}
 
-            {!loading && !error && venues.length === 0 && (
+            {venueError && !anyLoading && (
+              <div className="text-xs text-red-600">
+                {venueError}
+              </div>
+            )}
+
+            {!anyLoading && !venueError && venues.length === 0 && (
               <div className="text-xs text-gray-500">
                 No locations found for this city yet.
               </div>
             )}
 
-            {!loading &&
-              !error &&
+            {!anyLoading &&
+              !venueError &&
               venues.map((loc) => {
                 const isSelected = loc.id === selectedId;
                 const inStock = loc.totalChargersAvailable > 0;
@@ -210,46 +300,25 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        {/* Right: map placeholder */}
+        {/* Right: map */}
         <section className="md:w-2/3 lg:w-3/5 flex-1">
-          <div className="w-full h-[260px] md:h-full bg-gray-200 flex flex-col items-center justify-center text-center px-4">
-            {loading && (
-              <>
-                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">
-                  Loading map data…
-                </div>
-                <div className="text-xs text-gray-500">
-                  Fetching locations for {citySlug}.
-                </div>
-              </>
-            )}
-
-            {!loading && error && (
-              <div className="text-xs text-red-600">
-                {error}
-              </div>
-            )}
-
-            {!loading && !error && selectedVenue && (
-              <>
-                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">
-                  Map preview (coming soon)
-                </div>
-                <div className="text-sm font-medium text-gray-700">
-                  {selectedVenue.venueName}
-                </div>
-                <div className="text-xs text-gray-500 mt-1 max-w-xs">
-                  This area will show an interactive map with markers for each
-                  venue. Clicking a card or marker will center the map on that location.
-                </div>
-              </>
-            )}
-
-            {!loading && !error && !selectedVenue && (
-              <div className="text-xs text-gray-500">
-                No locations available to display.
-              </div>
-            )}
+          <div className="w-full h-[260px] md:h-full">
+            <MapView
+              venues={mapVenues}
+              selectedVenue={
+                selectedVenue
+                  ? {
+                      id: selectedVenue.id,
+                      venueName: selectedVenue.venueName,
+                      lat: selectedVenue.lat,
+                      lng: selectedVenue.lng,
+                    }
+                  : null
+              }
+              cityCenter={city?.mapCenter ?? null}
+              cityZoom={city?.mapZoom ?? 13}
+              onSelectVenue={(id) => setSelectedId(id)}
+            />
           </div>
         </section>
       </main>
