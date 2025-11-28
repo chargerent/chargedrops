@@ -2,9 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/drop_logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>chargedrops</title>
+    <title>Chargedrops</title>
+    <script>
+      // This nonce will be used by the @react-google-maps/api library to bypass CSP issues.
+      // It generates a random string and attaches it to the window object.
+      // The Google Maps script loader will automatically find and use this nonce.
+      window.reactGoogleMapsApiNonce =
+        [...Array(16)].map(() => Math.random().toString(36)[2]).join('') ||
+        'default-nonce';
+    </script>
   </head>
   <body>
     <div id="root"></div>
