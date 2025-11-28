@@ -367,13 +367,6 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [selectedStations, setSelectedStations] = useState<string[]>([]);
   const [status, setStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
 
-  const { isLoaded } = useJsApiLoader({
-    id: "google-map-script-admin", // Use a unique ID
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-    libraries: placesLibraries, // Use the constant array
-    nonce: (window as any).reactGoogleMapsApiNonce,
-  });
-
   // Fetch all available stations
   useEffect(() => {
     const fetchStations = async () => {

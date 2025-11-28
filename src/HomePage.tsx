@@ -52,7 +52,7 @@ const HomePage: React.FC = () => {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {cities.map(city => (
-              <Link to={`/${city.slug}`} key={city.id} className="flex flex-col items-center justify-center gap-3 rounded-lg bg-white p-4 text-center font-semibold text-gray-800 shadow-sm transition hover:shadow-md h-32">
+              <Link to={`/map/${city.slug}`} key={city.id} className="flex flex-col items-center justify-center gap-3 rounded-lg bg-white p-4 text-center font-semibold text-gray-800 shadow-sm transition hover:shadow-md h-32">
                 {city.logoUrl ? (
                   <img src={city.logoUrl} alt={city.displayName} className="h-12 max-w-full object-contain" />
                 ) : (

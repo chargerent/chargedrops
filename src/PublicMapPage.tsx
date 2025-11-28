@@ -213,6 +213,8 @@ const ActionButton: React.FC<{ href: string; label: string; icon: React.ReactNod
   </a>
 );
 
+const placesLibrary: ("places")[] = ["places"];
+
 const PublicMapPage: React.FC = () => {
   const params = useParams();
   const citySlug = params.citySlug || "demo-city"; // Use slug from URL or fallback
@@ -227,7 +229,7 @@ const PublicMapPage: React.FC = () => {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script-public",
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-    libraries: ["places"],
+    libraries: placesLibrary,
     nonce: (window as any).reactGoogleMapsApiNonce,
   });
 

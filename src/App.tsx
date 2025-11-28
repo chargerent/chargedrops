@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route, Outlet } from "react-router-dom";
+import { Routes, Route, Outlet, Navigate, useParams } from "react-router-dom";
 
 // Import your new pages
 import HomePage from "./HomePage";
@@ -22,18 +22,30 @@ const ProtectedRoute: React.FC = () => {
   // return isAuthenticated ? <Outlet /> : <Navigate to="/admin/login" />;
 };
 
+/**
+ * A component that redirects from the old city URL format (/:citySlug)
+ * to the new format (/map/:citySlug).
+ */
+const LegacyCityRedirect: React.FC = () => {
+  const { citySlug } = useParams();
+  return <Navigate to={`/map/${citySlug}`} replace />;
+};
+
 const App: React.FC = () => {
   return (
     <Routes>
       {/* Public map routes */}
       <Route path="/" element={<HomePage />} />
-      <Route path="/:citySlug" element={<PublicMapPage />} />
+      <Route path="/map/:citySlug" element={<PublicMapPage />} />
 
       {/* Admin routes */}
       <Route path="/admin/login" element={<AdminLoginPage />} />
       <Route path="/admin" element={<ProtectedRoute />}>
         <Route index element={<AdminDashboardPage />} />
       </Route>
+
+      {/* Redirect for old city URLs to the new /map/ structure */}
+      <Route path="/:citySlug" element={<LegacyCityRedirect />} />
     </Routes>
   );
 };
