@@ -58,7 +58,6 @@ const HomePage: React.FC = () => {
                 ) : (
                   <CitiesIcon />
                 )}
-                <span className="text-sm">{city.displayName}</span>
               </Link>
             ))}
           </div>

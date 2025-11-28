@@ -709,7 +709,6 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 ) : (
                   <CitiesIcon />
                 )}
-                <span className="text-sm">{city.displayName}</span>
               </div>
             ))}
           </div>

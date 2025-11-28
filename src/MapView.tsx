@@ -41,11 +41,17 @@ const MapView: React.FC<MapViewProps> = ({
   isLoaded, // Receive this from the parent
 }) => {
   const mapRef = useRef<google.maps.Map | null>(null);
+  const initialLoadRef = useRef(true);
 
   // When a venue is selected from the list, pan the map to it
   useEffect(() => {
-    if (mapRef.current && selectedVenue) {
+    // On initial load, we want the `onLoad` fitBounds to take priority.
+    // We skip the first pan-to-selection to avoid overriding the initial zoom.
+    if (mapRef.current && selectedVenue && !initialLoadRef.current) {
       mapRef.current.panTo({ lat: selectedVenue.lat, lng: selectedVenue.lng });
+    }
+    if (selectedVenue) {
+      initialLoadRef.current = false;
     }
   }, [selectedVenue]);
 
