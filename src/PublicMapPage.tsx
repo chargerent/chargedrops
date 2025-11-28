@@ -230,7 +230,6 @@ const PublicMapPage: React.FC = () => {
     id: "google-map-script-public",
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
     libraries: placesLibrary,
-    nonce: (window as any).reactGoogleMapsApiNonce,
   });
 
   const [liveVenueData, setLiveVenueData] = useState<{ open_now?: boolean; rating?: number; user_ratings_total?: number; } | null>(null);

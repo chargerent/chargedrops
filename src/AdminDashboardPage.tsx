@@ -371,7 +371,6 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     id: "google-map-script-admin", // Use a unique ID
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
     libraries: placesLibraries,
-    nonce: (window as any).reactGoogleMapsApiNonce,
   });
 
   // Fetch all available stations
