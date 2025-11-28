@@ -232,6 +232,7 @@ const PublicMapPage: React.FC = () => {
 
   const [liveVenueData, setLiveVenueData] = useState<{ open_now?: boolean; rating?: number; user_ratings_total?: number; } | null>(null);
   const [loadingLive, setLoadingLive] = useState(false);
+  const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const [mainPhoto, setMainPhoto] = useState<string | null>(null);
 
 

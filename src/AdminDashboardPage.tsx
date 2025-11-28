@@ -439,6 +439,8 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     placesService.getDetails({ placeId: place.place_id, fields }, (details, status) => {
       if (status === window.google.maps.places.PlacesServiceStatus.OK && details) {
+        // Cast to `any` to access properties not in the default type definitions
+        const placeDetails = details as any;
         setSelectedPlace({
           place_id: place.place_id, // Explicitly add the place_id
           venueName: details.name || '',
@@ -451,7 +453,7 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           rating: details.rating || 0,
           user_ratings_total: details.user_ratings_total || 0, // This is correct
           reviews: details.reviews || [],
-          editorial_summary: details.editorial_summary?.overview || '',
+          editorial_summary: placeDetails.editorial_summary?.overview || '',
           opening_hours_text: details.opening_hours?.weekday_text || [],
           googleMapsUrl: details.url || '',
           opening_hours: details.opening_hours,
