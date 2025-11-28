@@ -24,6 +24,11 @@ type FirestoreCity = {
   mapZoom?: number;
 };
 
+type VenueStation = {
+  stationId: string;
+  stationLocation: string;
+};
+
 type Venue = {
   id: string;
   place_id?: string; // Google Place ID for live data fetching
@@ -43,6 +48,7 @@ type Venue = {
   photos?: string[];
   editorial_summary?: string;
   opening_hours_text?: string[];
+  stationDetails?: VenueStation[];
 };
 
 type City = {
@@ -180,6 +186,7 @@ const useVenues = (citySlug: string) => {
             photos: Array.isArray(data.photos) ? data.photos : [],
             editorial_summary: data.editorial_summary ?? "",
             opening_hours_text: Array.isArray(data.opening_hours_text) ? data.opening_hours_text : [],
+            stationDetails: Array.isArray(data.stationDetails) ? data.stationDetails : [],
           };
         });
         setVenues(items);
@@ -328,8 +335,8 @@ const PublicMapPage: React.FC = () => {
             </button>
             {instructionsExpanded && <div className="px-3 pb-3">
               <ol className="list-decimal list-inside text-xs text-gray-600 space-y-1">
-                <li>Find a location on the map and visit the kiosk.</li>
-                <li>Scan the QR code on the kiosk to borrow the charger free for 1 hour.</li>
+                <li>Find a location on the map and visit the station.</li>
+                <li>Scan the QR code to borrow the charger <span className="font-bold">free for 1 hour</span>.</li>
                 <li>Take your portable charger and return it to any location when done!</li>
               </ol>
             </div>}
@@ -373,6 +380,17 @@ const PublicMapPage: React.FC = () => {
                     <div>
                       <h3 className="text-base font-bold">{loc.venueName}</h3>
                       <p className="text-xs text-gray-500 mt-1">{loc.address}</p>
+                      {loc.stationDetails && loc.stationDetails.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-100">
+                          <ul className="space-y-1 text-xs">
+                            {loc.stationDetails.map((station, index) => (
+                              <li key={index} className="flex items-center gap-1.5 text-gray-600">
+                                <span className="font-semibold">{station.stationId}:</span><span>{station.stationLocation}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 text-xs flex-shrink-0 ml-2">
                       <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium text-xs">
@@ -427,6 +445,19 @@ const PublicMapPage: React.FC = () => {
                     <h3 className="text-lg font-bold">{selectedVenue.venueName}</h3>
                     <p className="text-sm text-gray-500 mt-1">{selectedVenue.address}</p>
                   </div>
+                  
+                  {selectedVenue.stationDetails && selectedVenue.stationDetails.length > 0 && (
+                    <div className="pt-3 border-t border-gray-100">
+                      <h4 className="text-sm font-bold mb-2">Station Locations</h4>
+                      <ul className="space-y-2 text-sm">
+                        {selectedVenue.stationDetails.map((station, index) => (
+                          <li key={index} className="flex items-center gap-2 text-gray-600">
+                            <span className="font-semibold">{station.stationId}:</span><span>{station.stationLocation}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between text-sm">
                     {loadingLive ? (
@@ -535,6 +566,19 @@ const PublicMapPage: React.FC = () => {
                     <h3 className="text-lg font-bold">{selectedVenue.venueName}</h3>
                     <p className="text-sm text-gray-500 mt-1">{selectedVenue.address}</p>
                   </div>
+
+                  {selectedVenue.stationDetails && selectedVenue.stationDetails.length > 0 && (
+                    <div className="pt-3 border-t border-gray-100">
+                      <h4 className="text-sm font-bold mb-2">Station Locations</h4>
+                      <ul className="space-y-2 text-sm">
+                        {selectedVenue.stationDetails.map((station, index) => (
+                          <li key={index} className="flex items-center gap-2 text-gray-600">
+                            <span className="font-semibold">{station.stationId}:</span><span>{station.stationLocation}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between text-sm">
                     {loadingLive ? (

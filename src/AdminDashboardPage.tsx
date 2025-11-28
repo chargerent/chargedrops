@@ -27,6 +27,7 @@ type FullCityData = {
 type Venue = {
   id: string;
   venueName: string;
+  stationDetails?: VenueStation[];
   photoUrl: string;
 }
 
@@ -350,6 +351,159 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
   );
 };
 
+const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venueId, onBack }) => {
+  const [venue, setVenue] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [stations, setStations] = useState<Station[]>([]);
+  const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
+
+  // Fetch all stations (assigned and unassigned)
+  useEffect(() => {
+    const fetchStations = async () => {
+      try {
+        const stationsRef = collection(db, "stations");
+        const q = query(stationsRef, orderBy("stationid", "asc"));
+        const snapshot = await getDocs(q);
+        const stationList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Station));
+        setStations(stationList);
+      } catch (error) {
+        console.error("Error fetching stations:", error);
+      }
+    };
+    fetchStations();
+  }, []);
+
+  // Fetch the specific venue to edit
+  useEffect(() => {
+    const fetchVenue = async () => {
+      setLoading(true);
+      const venueRef = doc(db, "venues", venueId);
+      const docSnap = await getDoc(venueRef);
+      if (docSnap.exists()) {
+        const venueData = { id: docSnap.id, ...docSnap.data() };
+        setVenue(venueData);
+        if (venueData.stationDetails && venueData.stationDetails.length > 0) {
+          setVenueStations(venueData.stationDetails);
+        } else {
+          setVenueStations([{ stationId: '', stationLocation: '' }]);
+        }
+      } else {
+        console.error("No such venue!");
+      }
+      setLoading(false);
+    };
+    fetchVenue();
+  }, [venueId]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    if (!venue) return;
+    const { name, value } = e.target;
+    setVenue({ ...venue, [name]: value });
+  };
+
+  const handleSave = async () => {
+    if (!venue) return;
+    setSaving(true);
+    const venueRef = doc(db, "venues", venue.id);
+    
+    const dataToSave = {
+      ...venue,
+      stationDetails: venueStations.filter(vs => vs.stationId),
+      totalChargersAvailable: venueStations.filter(vs => vs.stationId).length,
+    };
+    // Remove the 'id' field before sending it to Firestore
+    delete dataToSave.id;
+
+    try {
+      await updateDoc(venueRef, dataToSave);
+      alert("Venue updated successfully!");
+      onBack();
+    } catch (error) {
+      console.error("Error updating venue: ", error);
+      alert("Failed to update venue.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleVenueStationChange = (index: number, field: keyof VenueStation, value: string) => {
+    const updatedStations = [...venueStations];
+    updatedStations[index][field] = value;
+    setVenueStations(updatedStations);
+  };
+
+  const addVenueStation = () => {
+    setVenueStations([...venueStations, { stationId: '', stationLocation: '' }]);
+  };
+
+  const removeVenueStation = (index: number) => {
+    setVenueStations(venueStations.filter((_, i) => i !== index));
+  };
+
+  if (loading) return <p>Loading venue details...</p>;
+  if (!venue) return <p>Could not load venue details.</p>;
+
+  return (
+    <div>
+      <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-6">
+        <BackIcon />
+        Back to Venues
+      </button>
+      <div className="bg-white p-6 rounded-lg shadow-sm space-y-4">
+        <h2 className="text-xl font-bold">Editing: {venue.venueName}</h2>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Venue Name</label>
+          <input type="text" name="venueName" value={venue.venueName} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+        </div>
+        
+        <div className="pt-4 border-t">
+          <h3 className="font-semibold mb-2">Assign Stations</h3>
+          <div className="space-y-3">
+            {venueStations.map((vs, index) => (
+              <div key={index} className="flex items-center gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500">Station ID</label>
+                  <select value={vs.stationId} onChange={(e) => handleVenueStationChange(index, 'stationId', e.target.value)} className="block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                    <option value="">Select a station</option>
+                    {stations.map(station => (
+                      <option key={station.id} value={station.id}>{station.stationid}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500">Station Location</label>
+                  <input type="text" placeholder="e.g., 'Near front entrance'" value={vs.stationLocation} onChange={(e) => handleVenueStationChange(index, 'stationLocation', e.target.value)} className="block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+                </div>
+                {venueStations.length > 1 && (
+                  <button type="button" onClick={() => removeVenueStation(index)} className="p-2 text-red-500 hover:text-red-700 self-end">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </button>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={addVenueStation} className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-semibold"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Add Another Station</button>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onBack} className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving} className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-blue-300">
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type VenueStation = {
+  stationId: string;
+  stationLocation: string;
+};
+
 const placesLibraries: ("places")[] = ["places"];
 
 const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -364,7 +518,7 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   const [stations, setStations] = useState<Station[]>([]);
-  const [selectedStations, setSelectedStations] = useState<string[]>([]);
+  const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
   const [status, setStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
 
   const { isLoaded } = useJsApiLoader({
@@ -461,7 +615,7 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           lng: details.geometry?.location?.lng() || 0,
           active: true,
           sortOrder: 100,
-          stationIds: [], // Initialize with empty array
+          stationDetails: [], // Initialize with empty array
           totalChargersAvailable: 0,
           totalSlotsFree: 8,
         });
@@ -478,11 +632,10 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setSaving(true);
     try {
       // Add selected stations to the place object before saving
-      const placeWithStations = {
+      const placeToSave = {
         ...selectedPlace,
-        stationIds: selectedStations,
-        // You might want to update totalChargersAvailable based on selected stations
-        totalChargersAvailable: selectedStations.length,
+        stationDetails: venueStations.filter(vs => vs.stationId), // Filter out empty entries
+        totalChargersAvailable: venueStations.filter(vs => vs.stationId).length,
       };
 
       // Create a clean object for Firestore, excluding non-serializable data
@@ -501,10 +654,10 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         lat: selectedPlace.lat,
         lng: selectedPlace.lng,
         active: selectedPlace.active,
-        sortOrder: placeWithStations.sortOrder,
-        stationIds: placeWithStations.stationIds,
-        totalChargersAvailable: placeWithStations.totalChargersAvailable,
-        totalSlotsFree: placeWithStations.totalSlotsFree,
+        sortOrder: placeToSave.sortOrder,
+        stationDetails: placeToSave.stationDetails,
+        totalChargersAvailable: placeToSave.totalChargersAvailable,
+        totalSlotsFree: placeToSave.totalSlotsFree,
         opening_hours_text: selectedPlace.opening_hours_text,
       };
       await addDoc(collection(db, "venues"), dataToSave);
@@ -518,14 +671,22 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }
   };
 
-  const handleStationSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
-    setSelectedStations(selectedOptions);
+  const handleVenueStationChange = (index: number, field: keyof VenueStation, value: string) => {
+    const updatedStations = [...venueStations];
+    updatedStations[index][field] = value;
+    setVenueStations(updatedStations);
+  };
+
+  const addVenueStation = () => {
+    setVenueStations([...venueStations, { stationId: '', stationLocation: '' }]);
+  };
+
+  const removeVenueStation = (index: number) => {
+    setVenueStations(venueStations.filter((_, i) => i !== index));
   };
 
   const handleBackToSearch = () => {
     setSelectedPlace(null);
-    setSelectedStations([]);
     setSearchQuery("");
   };
 
@@ -619,12 +780,31 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
           <div className="pt-4 border-t">
             <h3 className="font-semibold mb-2">Assign Stations</h3>
-            <p className="text-sm text-gray-500 mb-2">Select one or more stations to assign to this venue. (Use Ctrl/Cmd to select multiple)</p>
-            <select multiple value={selectedStations} onChange={handleStationSelect} className="block w-full p-2 border border-gray-300 rounded-md shadow-sm h-40">
-              {stations.map(station => (
-                <option key={station.id} value={station.id}>{station.stationid}</option>
+            <div className="space-y-3">
+              {venueStations.map((vs, index) => (
+                <div key={index} className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500">Station ID</label>
+                    <select value={vs.stationId} onChange={(e) => handleVenueStationChange(index, 'stationId', e.target.value)} className="block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                      <option value="">Select a station</option>
+                      {stations.map(station => (
+                        <option key={station.id} value={station.id}>{station.stationid}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500">Station Location</label>
+                    <input type="text" placeholder="e.g., 'Near front entrance'" value={vs.stationLocation} onChange={(e) => handleVenueStationChange(index, 'stationLocation', e.target.value)} className="block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+                  </div>
+                  {venueStations.length > 1 && (
+                    <button type="button" onClick={() => removeVenueStation(index)} className="p-2 text-red-500 hover:text-red-700 self-end">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </button>
+                  )}
+                </div>
               ))}
-            </select>
+              <button type="button" onClick={addVenueStation} className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-semibold"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Add Another Station</button>
+            </div>
           </div>
           <div className="flex justify-end gap-3 mt-4">
             <button type="button" onClick={handleBackToSearch} className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
@@ -646,6 +826,7 @@ const AdminDashboardPage: React.FC = () => {
   const [view, setView] = useState<"dashboard" | "cities" | "venues">("dashboard");
   const [selectedCityId, setSelectedCityId] = useState<string | null>(null);
   const [isAddingCity, setIsAddingCity] = useState(false);
+  const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
   const [isAddingVenue, setIsAddingVenue] = useState(false);
 
   const handleLogout = () => {
@@ -710,12 +891,15 @@ const AdminDashboardPage: React.FC = () => {
           <AddCityView onBack={() => { setIsAddingCity(false); setView("cities"); }} />
         )}
 
-        {view === "venues" && !isAddingVenue && (
+        {view === "venues" && !isAddingVenue && !selectedVenueId && (
           <ManageVenuesView
             onBack={() => setView("dashboard")}
             onAddVenue={() => setIsAddingVenue(true)}
-            onSelectVenue={(id) => alert(`Editing venue ${id} coming soon!`)} // Placeholder
+            onSelectVenue={(id) => setSelectedVenueId(id)}
           />
+        )}
+        {view === "venues" && selectedVenueId && (
+          <EditVenueView venueId={selectedVenueId} onBack={() => setSelectedVenueId(null)} />
         )}
         {view === "venues" && isAddingVenue && (
           <AddVenueView onBack={() => setIsAddingVenue(false)} />
