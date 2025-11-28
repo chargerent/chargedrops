@@ -381,7 +381,7 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
       const venueRef = doc(db, "venues", venueId);
       const docSnap = await getDoc(venueRef);
       if (docSnap.exists()) {
-        const venueData = { id: docSnap.id, ...docSnap.data() };
+        const venueData = { id: docSnap.id, ...docSnap.data() } as Venue;
         setVenue(venueData);
         if (venueData.stationDetails && venueData.stationDetails.length > 0) {
           setVenueStations(venueData.stationDetails);
