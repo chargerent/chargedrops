@@ -9,6 +9,7 @@ import chargedropsLogo from "/chargedrop_logo.svg";
 type City = {
   id: string;
   displayName: string;
+  slug: string;
   logoUrl?: string;
 };
 
@@ -269,7 +270,37 @@ const AddCityView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   return (
     <div>
-      {/* This is the correct, simple AddCityView form. The complex venue logic will be moved to AddVenueView. */}
+      <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-6">
+        <BackIcon />
+        Back to Cities
+      </button>
+      <div className="bg-white p-6 rounded-lg shadow-sm space-y-4">
+        <h2 className="text-xl font-bold">Add New City</h2>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Display Name</label>
+          <input type="text" name="displayName" value={newCity.displayName} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Slug (URL path)</label>
+          <input type="text" name="slug" value={newCity.slug} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Sponsor Name</label>
+          <input type="text" name="sponsorName" value={newCity.sponsorName} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Logo URL</label>
+          <input type="text" name="logoUrl" value={newCity.logoUrl} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+        </div>
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onBack} className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving} className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-blue-300">
+            {saving ? "Saving..." : "Add City"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
@@ -418,7 +449,7 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           photoUrl: details.photos?.[0]?.getUrl({ maxWidth: 800 }) || 'https://via.placeholder.com/400x240?text=No+Image',
           photos: details.photos?.map(p => p.getUrl({ maxWidth: 800 })) || [],
           rating: details.rating || 0,
-          user_ratings_total: details.user_ratings_total || 0,
+          user_ratings_total: details.user_ratings_total || 0, // This is correct
           reviews: details.reviews || [],
           editorial_summary: details.editorial_summary?.overview || '',
           opening_hours_text: details.opening_hours?.weekday_text || [],
@@ -436,7 +467,7 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setSearchResults([]);
       } else {
         setStatus(status);
-      }
+      } // This is correct
     });
   };
 
@@ -545,6 +576,9 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               </div>
             )}
           </div>
+          {status && status !== 'OK' && (
+            <p className="text-sm text-red-600 mt-2">Could not fetch place details. Status: {status}</p>
+          )}
           <button type="button" onClick={() => setSelectedCity(null)} className="text-sm text-gray-600 hover:underline">
             &larr; Choose a different city
           </button>

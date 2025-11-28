@@ -4,11 +4,9 @@ import { useJsApiLoader } from "@react-google-maps/api";
 import {
   collection,
   getDocs,
-  query,
+  query, // Keep these imports
   where,
   orderBy,
-  doc, // Keep these imports
-  getDoc, // Keep these imports
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { MdDirections, MdPhone, MdLanguage } from "react-icons/md";
@@ -234,8 +232,6 @@ const PublicMapPage: React.FC = () => {
 
   const [liveVenueData, setLiveVenueData] = useState<{ open_now?: boolean; rating?: number; user_ratings_total?: number; } | null>(null);
   const [loadingLive, setLoadingLive] = useState(false);
-  const [hoursExpanded, setHoursExpanded] = useState(false);
-  const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const [mainPhoto, setMainPhoto] = useState<string | null>(null);
 
 
@@ -275,7 +271,6 @@ const PublicMapPage: React.FC = () => {
       });
     } else {
       setLiveVenueData(null); // Clear live data if no venue is selected
-      setHoursExpanded(false); // Collapse hours when deselecting
     }
   }, [selectedVenue, isLoaded]);
 

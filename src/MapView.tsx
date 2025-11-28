@@ -106,7 +106,7 @@ const MapView: React.FC<MapViewProps> = ({
               <div className="flex items-center gap-2 text-xs font-medium whitespace-nowrap">
                 <span className="flex items-center gap-1 text-blue-700">
                   <img src={dropLogo} alt="charger" className="h-4 w-4" />
-                  {venue.totalChargersAvailable}
+                  {venue.totalChargersAvailable} charger{venue.totalChargersAvailable === 1 ? '' : 's'}
                 </span>
                 <span className="text-gray-400">|</span>
                 <span className="text-gray-500">S {venue.totalSlotsFree}</span>

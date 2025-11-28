@@ -1,6 +1,5 @@
 import React from "react";
-import { Routes, Route, Navigate, Outlet } from "react-router-dom";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { Routes, Route, Outlet } from "react-router-dom";
 
 // Import your new pages
 import HomePage from "./HomePage";
@@ -13,12 +12,12 @@ const ProtectedRoute: React.FC = () => {
   // To re-enable login, uncomment the lines below and remove `return <Outlet />;`
   return <Outlet />;
 
-  // const auth = getAuth();
-  // const [isAuthenticated, setIsAuthenticated] = React.useState<boolean | null>(null);
-  // React.useEffect(() => {
-  //   const unsubscribe = onAuthStateChanged(auth, (user) => setIsAuthenticated(!!user));
-  //   return () => unsubscribe();
-  // }, [auth]);
+  // import { getAuth, onAuthStateChanged } from "firebase/auth";
+  // import { Navigate } from "react-router-dom";
+  // const auth = getAuth(); // ...
+  // const [isAuthenticated, setIsAuthenticated] = React.useState<boolean | null>(null); // ...
+  // const unsubscribe = onAuthStateChanged(auth, (user) => setIsAuthenticated(!!user)); // ...
+
   // if (isAuthenticated === null) return <div>Loading...</div>;
   // return isAuthenticated ? <Outlet /> : <Navigate to="/admin/login" />;
 };
