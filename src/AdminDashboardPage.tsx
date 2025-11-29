@@ -37,6 +37,8 @@ type Venue = {
 type Station = {
   id: string;
   stationid: string; // e.g., "LAX0001"
+  count: number;
+  slots: number;
 };
 
 // Type for Google Places search results
@@ -421,33 +423,71 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchVenues = async () => {
-      try {
-        // Fetch all necessary data in parallel
-        const [venuesSnapshot, citiesSnapshot, stationsSnapshot] = await Promise.all([
-          getDocs(query(collection(db, "venues"), orderBy("venueName", "asc"))),
-          getDocs(query(collection(db, "cities"), orderBy("displayName", "asc"))),
-          getDocs(collection(db, "stations"))
-        ]);
+    // Set up real-time listeners for venues, cities, and stations
+    const venuesQuery = query(collection(db, "venues"), orderBy("venueName", "asc"));
+    const unsubscribeVenues = onSnapshot(venuesQuery, (snapshot) => {
+      const venueList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Venue));
+      console.log("[DEBUG] Fetched Venues:", venueList); // DEBUG: Log raw venues
+      setVenues(venueList);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching venues in real-time:", error);
+      setLoading(false);
+    });
 
-        const venueList = venuesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Venue));
-        const cityList = citiesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as City));
-        const stationList = stationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Station));
+    const citiesQuery = query(collection(db, "cities"), orderBy("displayName", "asc"));
+    const unsubscribeCities = onSnapshot(citiesQuery, (snapshot) => {
+      const cityList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as City));
+      setCities(cityList);
+    });
 
-        setVenues(venueList);
-        setCities(cityList);
-        setStations(stationList);
-      } catch (error) {
-        console.error("Error fetching venues:", error);
-      } finally {
-        setLoading(false);
-      }
+    const stationsQuery = collection(db, "stations");
+    const unsubscribeStations = onSnapshot(stationsQuery, (snapshot) => {
+      const stationList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Station));
+      console.log("[DEBUG] Fetched Stations:", stationList); // DEBUG: Log raw stations
+      setStations(stationList);
+    });
+
+    // Cleanup function to unsubscribe from listeners when the component unmounts
+    return () => {
+      unsubscribeVenues();
+      unsubscribeCities();
+      unsubscribeStations();
     };
-    fetchVenues();
   }, []);
 
+  const venuesWithLiveCounts = useMemo(() => {
+    console.log("[DEBUG] Recalculating live counts..."); // DEBUG: Log start of calculation
+    const stationsMapById = stations.reduce((acc, station) => {
+      acc[station.id] = station;
+      return acc;
+    }, {} as Record<string, Station>);
+    console.log("[DEBUG] Created Station Map:", stationsMapById); // DEBUG: Log the created station map
+
+    const calculatedVenues = venues.map(venue => {
+      console.log(`[DEBUG] Processing Venue: ${venue.venueName} (ID: ${venue.id})`); // DEBUG: Log which venue is being processed
+      let totalChargersAvailable = 0;
+      let totalSlotsFree = 0;
+      venue.stationDetails?.forEach(detail => {
+        const station = stationsMapById[detail.stationId];
+        console.log(`[DEBUG]   - Looking for Station ID: ${detail.stationId}`); // DEBUG: Log the station ID being looked for
+        if (station) {
+          console.log(`[DEBUG]   - ✓ Found Station:`, station); // DEBUG: Log the found station
+          totalChargersAvailable += station.count || 0;
+          totalSlotsFree += station.slots || 0;
+        } else {
+          console.warn(`[DEBUG]   - ✗ Station with ID ${detail.stationId} not found in stations map.`); // DEBUG: Warn if station not found
+        }
+      });
+      console.log(`[DEBUG]   - Totals for ${venue.venueName}: Chargers=${totalChargersAvailable}, Slots=${totalSlotsFree}`); // DEBUG: Log final counts for the venue
+      return { ...venue, totalChargersAvailable, totalSlotsFree };
+    });
+    console.log("[DEBUG] Final calculated venues with counts:", calculatedVenues); // DEBUG: Log the final result
+    return calculatedVenues;
+  }, [venues, stations]);
+
   const groupedVenues = useMemo(() => {
-    return venues.reduce((acc, venue) => {
+    return venuesWithLiveCounts.reduce((acc, venue) => {
       const citySlug = venue.citySlug || 'unassigned';
       if (!acc[citySlug]) {
         acc[citySlug] = [];
@@ -455,7 +495,7 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
       acc[citySlug].push(venue);
       return acc;
     }, {} as Record<string, Venue[]>);
-  }, [venues]);
+  }, [venuesWithLiveCounts]);
 
   const stationsMap = useMemo(() => {
     return stations.reduce((acc, station) => {
@@ -477,23 +517,23 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
             <div key={citySlug}>
               <h2 className="text-xl font-bold mb-4 border-b pb-2">{city?.displayName || 'Unassigned Venues'}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {groupedVenues[citySlug].map(venue => (
+                {groupedVenues[citySlug].map((venue: any) => ( // Use the enriched venue object
                   <div key={venue.id} onClick={() => onSelectVenue(venue.id)} className="bg-white rounded-lg shadow-sm overflow-hidden cursor-pointer transition hover:shadow-md flex flex-col">
                     <img src={venue.photoUrl} alt={venue.venueName} className="w-full h-32 object-cover" />
                     <div className="p-3 flex-grow flex flex-col">
-                      <h3 className="text-sm font-semibold truncate">{venue.venueName}</h3>
-                      {venue.stationDetails && venue.stationDetails.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-gray-100">
-                          <h4 className="text-xs font-bold text-gray-500 mb-1">Stations</h4>
-                          <ul className="space-y-1 text-xs">
-                            {venue.stationDetails.map((station, index) => (
-                              <li key={index} className="bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate">
-                                {stationsMap[station.stationId] || station.stationId}
-                              </li>
-                            ))}
-                          </ul>
+                      <h3 className="text-sm font-semibold truncate flex-grow">{venue.venueName}</h3>
+                      <div className="mt-2 pt-2 border-t border-gray-100 text-xs grid grid-cols-2 gap-2">
+                        <div className={`flex items-center gap-1 ${
+                          venue.totalChargersAvailable === 0 ? 'text-red-600' : 'text-gray-600'
+                        }`}>
+                          <span className="font-semibold">{venue.totalChargersAvailable || 0}</span> Chargers
                         </div>
-                      )}
+                        <div className={`flex items-center gap-1 ${
+                          venue.totalSlotsFree === 0 ? 'text-red-600' : 'text-gray-600'
+                        }`}>
+                          <span className="font-semibold">{venue.totalSlotsFree || 0}</span> Slots
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -517,6 +557,26 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
   const [stations, setStations] = useState<Station[]>([]);
   const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
 
+  // State for live counts
+  const [totalChargers, setTotalChargers] = useState(0);
+  const [totalSlots, setTotalSlots] = useState(0);
+
+  // Recalculate totals whenever venueStations or the list of all stations changes
+  useEffect(() => {
+    if (stations.length > 0) {
+      let chargers = 0;
+      let slots = 0;
+      venueStations.forEach(vs => {
+        const station = stations.find(s => s.id === vs.stationId);
+        if (station) {
+          chargers += station.count || 0;
+          slots += station.slots || 0;
+        }
+      });
+      setTotalChargers(chargers);
+      setTotalSlots(slots);
+    }
+  }, [venueStations, stations]);
   // Fetch all stations (assigned and unassigned)
   useEffect(() => {
     const fetchStations = async () => {
@@ -589,7 +649,7 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
       });
 
       // Update the venue document
-      const venueData = { ...venue, stationDetails: venueStations.filter(vs => vs.stationId) };
+      const venueData = { ...venue, stationDetails: venueStations.filter(vs => vs.stationId) }; // We no longer save totals here
       const { id, ...dataToSave } = venueData; // Use destructuring to exclude 'id'
       batch.update(venueRef, dataToSave);
 
@@ -634,6 +694,19 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
           <input type="text" name="venueName" value={venue.venueName} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
         
+        <div className="grid grid-cols-2 gap-4 pt-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Total Chargers</label>
+              <p className="mt-1 text-lg font-semibold">{totalChargers}</p>
+              <p className="text-xs text-gray-500">Updates automatically based on assigned stations.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Total Slots</label>
+              <p className="mt-1 text-lg font-semibold">{totalSlots}</p>
+              <p className="text-xs text-gray-500">Updates automatically based on assigned stations.</p>
+            </div>
+        </div>
+
         <div className="pt-4 border-t">
           <h3 className="font-semibold mb-2">Assign Stations</h3>
           <div className="space-y-3">
@@ -695,6 +768,7 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
   const [stations, setStations] = useState<Station[]>([]);
   const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
   const [status, setStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
+  const [allStations, setAllStations] = useState<Station[]>([]);
 
   useEffect(() => {
     const fetchUnassignedStations = async () => {
@@ -712,8 +786,18 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
         console.error("Error fetching unassigned stations:", error);
       }
     };
+    const fetchAllStations = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "stations"));
+        const stationList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Station));
+        setAllStations(stationList);
+      } catch (error) {
+        console.error("Error fetching all stations:", error);
+      }
+    };
     if (isLoaded) {
       fetchUnassignedStations();
+      fetchAllStations();
     }
   }, [isLoaded]);
 
@@ -784,8 +868,6 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
           active: true,
           sortOrder: 100,
           stationDetails: [], // Initialize with empty array
-          totalChargersAvailable: 0,
-          totalSlotsFree: 8,
         });
         setSearchQuery("");
         setSearchResults([]);
@@ -800,11 +882,11 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
     setSaving(true);
     try {
       const batch = writeBatch(db);
+
       // Add selected stations to the place object before saving
       const placeToSave = {
         ...selectedPlace,
         stationDetails: venueStations.filter(vs => vs.stationId), // Filter out empty entries
-        totalChargersAvailable: venueStations.filter(vs => vs.stationId).length,
       };
 
       // Create a clean object for Firestore, excluding non-serializable data
@@ -825,8 +907,6 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
         active: selectedPlace.active,
         sortOrder: placeToSave.sortOrder,
         stationDetails: placeToSave.stationDetails,
-        totalChargersAvailable: placeToSave.totalChargersAvailable,
-        totalSlotsFree: placeToSave.totalSlotsFree,
         opening_hours_text: selectedPlace.opening_hours_text,
       };
 

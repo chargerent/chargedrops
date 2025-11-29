@@ -110,12 +110,16 @@ const MapView: React.FC<MapViewProps> = ({
                 {venue.venueName}
               </div>
               <div className="flex items-center gap-2 text-xs font-medium whitespace-nowrap">
-                <span className="flex items-center gap-1 text-blue-700">
+                <span className={`flex items-center gap-1 ${
+                  venue.totalChargersAvailable === 0 ? 'text-red-600' : 'text-blue-700'
+                }`}>
                   <img src={dropLogo} alt="charger" className="h-4 w-4" />
                   {venue.totalChargersAvailable} charger{venue.totalChargersAvailable === 1 ? '' : 's'}
                 </span>
                 <span className="text-gray-400">|</span>
-                <span className="text-gray-500">{venue.totalSlotsFree} slots</span>
+                <span className={`${
+                  venue.totalSlotsFree === 0 ? 'text-red-600' : 'text-gray-500'
+                }`}>{venue.totalSlotsFree} slots</span>
               </div>
             </div>
             {/* The triangle pointing down */}

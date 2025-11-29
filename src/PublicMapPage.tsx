@@ -6,6 +6,7 @@ import {
   getDocs,
   query, // Keep these imports
   where,
+  onSnapshot,
   orderBy,
 } from "firebase/firestore";
 import { db } from "./firebase";
@@ -28,6 +29,13 @@ type FirestoreCity = {
 type VenueStation = {
   stationId: string;
   stationLocation: string;
+};
+
+type Station = {
+  id: string;
+  stationid: string;
+  count: number;
+  slots: number;
 };
 
 type Venue = {
@@ -210,6 +218,40 @@ const useVenues = (citySlug: string) => {
   return { venues, loading, error };
 };
 
+/**
+ * Custom hook to fetch all stations from Firestore in real-time.
+ */
+const useStations = () => {
+  const [stations, setStations] = useState<Station[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stationsQuery = query(collection(db, "stations"));
+    const unsubscribe = onSnapshot(
+      stationsQuery,
+      (snapshot) => {
+        const stationList = snapshot.docs.map(
+          (doc) => ({ id: doc.id, ...doc.data() } as Station)
+        );
+        setStations(stationList);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error fetching stations in real-time:", err);
+        setError("Unable to load station data.");
+        setLoading(false);
+      }
+    );
+
+    // Cleanup function to unsubscribe from the listener
+    return () => unsubscribe();
+  }, []);
+
+  return { stations, loading, error };
+};
+
+
 const ActionButton: React.FC<{ href: string; label: string; icon: React.ReactNode; }> = ({ href, label, icon }) => (
   <a
     href={href}
@@ -235,6 +277,11 @@ const PublicMapPage: React.FC = () => {
     loading: loadingVenues,
     error: venueError,
   } = useVenues(citySlug);
+  const {
+    stations,
+    loading: loadingStations,
+    error: stationError,
+  } = useStations();
 
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script-public",
@@ -251,9 +298,32 @@ const PublicMapPage: React.FC = () => {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // This calculates the live counts for chargers and slots
+  const venuesWithLiveCounts = useMemo(() => {
+    if (loadingVenues || loadingStations) return [];
+
+    const stationsMap = stations.reduce((acc, station) => {
+      acc[station.id] = station;
+      return acc;
+    }, {} as Record<string, Station>);
+
+    return venues.map(venue => {
+      let totalChargersAvailable = 0;
+      let totalSlotsFree = 0;
+      venue.stationDetails?.forEach(detail => {
+        const station = stationsMap[detail.stationId];
+        if (station) {
+          totalChargersAvailable += station.count || 0;
+          totalSlotsFree += station.slots || 0;
+        }
+      });
+      return { ...venue, totalChargersAvailable, totalSlotsFree };
+    });
+  }, [venues, stations, loadingVenues, loadingStations]);
+
   const selectedVenue = useMemo(
-    () => venues.find((v) => v.id === selectedId) ?? null,
-    [venues, selectedId]
+    () => venuesWithLiveCounts.find((v) => v.id === selectedId) ?? null,
+    [venuesWithLiveCounts, selectedId]
   );
 
   // Set initial selected venue and main photo when venues load or selection changes
@@ -288,7 +358,7 @@ const PublicMapPage: React.FC = () => {
     }
   }, [selectedVenue, isLoaded]);
 
-  const anyLoading = loadingVenues || loadingCity;
+  const anyLoading = loadingVenues || loadingCity || loadingStations;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -355,7 +425,7 @@ const PublicMapPage: React.FC = () => {
         {/* On mobile, it's a bottom sheet. On desktop, a left sidebar. */}
         <section className="hidden md:block absolute top-0 bottom-0 left-0 z-10 md:w-96 lg:w-1/3 bg-gray-50">
           {/* Location list container - shown only if no venue is selected on desktop */}
-          <div className={`p-3 flex-col gap-3 overflow-y-auto h-full ${selectedId ? 'hidden' : 'flex'}`}>
+          <div className={`p-3 flex-col gap-3 overflow-y-auto h-full ${selectedId ? 'hidden' : 'flex'}`} data-testid="venue-list">
             {anyLoading && !venues.length && (
               <div className="text-xs text-gray-500">
                 Loading city and locations…
@@ -366,17 +436,17 @@ const PublicMapPage: React.FC = () => {
               <div className="text-xs text-red-600">{cityError}</div>
             )}
 
-            {venueError && !anyLoading && (
-              <div className="text-xs text-red-600">{venueError}</div>
+            {(venueError || stationError) && !anyLoading && (
+              <div className="text-xs text-red-600">{venueError || stationError}</div>
             )}
 
-            {!anyLoading && !venueError && venues.length === 0 && (
+            {!anyLoading && !venueError && !stationError && venues.length === 0 && (
               <div className="text-xs text-gray-500">
                 No locations found for this city yet.
               </div>
             )}
 
-            {venues.map((loc) => (
+            {venuesWithLiveCounts.map((loc) => (
               <article
                 key={loc.id}
                 onClick={() => setSelectedId(loc.id)}
@@ -401,11 +471,19 @@ const PublicMapPage: React.FC = () => {
                       )}
                     </div>
                     <div className="flex items-center gap-2 text-xs flex-shrink-0 ml-2">
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium text-xs">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium text-xs ${
+                        loc.totalChargersAvailable === 0
+                          ? 'bg-red-50 text-red-700'
+                          : 'bg-blue-50 text-blue-700'
+                      }`}>
                         <img src={dropLogo} alt="charger" className="h-3 w-3" />
                         {loc.totalChargersAvailable} charger{loc.totalChargersAvailable === 1 ? '' : 's'}
                       </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium text-xs whitespace-nowrap">{loc.totalSlotsFree} slots</span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full font-medium text-xs whitespace-nowrap ${
+                        loc.totalSlotsFree === 0
+                          ? 'bg-red-50 text-red-700'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>{loc.totalSlotsFree} slots</span>
                     </div>
                   </div>
                 </div>
@@ -488,11 +566,19 @@ const PublicMapPage: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <h4 className="text-sm font-bold">Availability</h4>
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium ${
+                        selectedVenue.totalChargersAvailable === 0
+                          ? 'bg-red-50 text-red-700'
+                          : 'bg-blue-50 text-blue-700'
+                      }`}>
                         <img src={dropLogo} alt="charger" className="h-4 w-4" />
                         {selectedVenue.totalChargersAvailable} charger{selectedVenue.totalChargersAvailable === 1 ? '' : 's'}
                       </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium whitespace-nowrap">{selectedVenue.totalSlotsFree} slots</span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+                        selectedVenue.totalSlotsFree === 0
+                          ? 'bg-red-50 text-red-700'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>{selectedVenue.totalSlotsFree} slots</span>
                     </div>
                   </div>
 
@@ -616,11 +702,19 @@ const PublicMapPage: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <h4 className="text-sm font-bold">Availability</h4>
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium ${
+                        selectedVenue.totalChargersAvailable === 0
+                          ? 'bg-red-50 text-red-700'
+                          : 'bg-blue-50 text-blue-700'
+                      }`}>
                         <img src={dropLogo} alt="charger" className="h-4 w-4" />
                         {selectedVenue.totalChargersAvailable} charger{selectedVenue.totalChargersAvailable === 1 ? '' : 's'}
                       </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium whitespace-nowrap">{selectedVenue.totalSlotsFree} slots</span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+                        selectedVenue.totalSlotsFree === 0
+                          ? 'bg-red-50 text-red-700'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>{selectedVenue.totalSlotsFree} slots</span>
                     </div>
                   </div>
 
@@ -666,7 +760,7 @@ const PublicMapPage: React.FC = () => {
         {/* Map view in the background */}
         <section className="absolute inset-0 z-0">
           <MapView
-            venues={venues}
+            venues={venuesWithLiveCounts}
             selectedVenue={selectedVenue}
             cityCenter={city?.mapCenter ?? null}
             cityZoom={city?.mapZoom ?? 13}
