@@ -564,18 +564,36 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
   const handleSave = async () => {
     if (!venue) return;
     setSaving(true);
-    const venueRef = doc(db, "venues", venue.id);
-    
-    const dataToSave = {
-      ...venue,
-      stationDetails: venueStations.filter(vs => vs.stationId),
-      totalChargersAvailable: venueStations.filter(vs => vs.stationId).length,
-    };
-    // Remove the 'id' field before sending it to Firestore
-    delete dataToSave.id;
 
     try {
-      await updateDoc(venueRef, dataToSave);
+      const batch = writeBatch(db);
+      const venueRef = doc(db, "venues", venue.id);
+
+      const originalStationIds = new Set(venue.stationDetails?.map((s: VenueStation) => s.stationId) || []);
+      const newStationIds = new Set(venueStations.filter(vs => vs.stationId).map(vs => vs.stationId));
+
+      // Stations to be marked as unassigned
+      originalStationIds.forEach(stationId => {
+        if (!newStationIds.has(stationId)) {
+          const stationRef = doc(db, "stations", stationId);
+          batch.update(stationRef, { Assigned: false });
+        }
+      });
+
+      // Stations to be marked as assigned
+      newStationIds.forEach(stationId => {
+        if (!originalStationIds.has(stationId)) {
+          const stationRef = doc(db, "stations", stationId);
+          batch.update(stationRef, { Assigned: true });
+        }
+      });
+
+      // Update the venue document
+      const dataToSave = { ...venue, stationDetails: venueStations.filter(vs => vs.stationId) };
+      delete dataToSave.id; // Don't save the id inside the document
+      batch.update(venueRef, dataToSave);
+
+      await batch.commit();
       alert("Venue updated successfully!");
       onBack();
     } catch (error) {
