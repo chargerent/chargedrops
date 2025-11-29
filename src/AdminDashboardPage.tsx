@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { getAuth, signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { useJsApiLoader } from "@react-google-maps/api";
@@ -308,16 +308,27 @@ const AddCityView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
 const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; onSelectVenue: (id: string) => void; }> = ({ onBack, onAddVenue, onSelectVenue }) => {
   const [venues, setVenues] = useState<Venue[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchVenues = async () => {
       try {
-        const venuesRef = collection(db, "venues");
-        const q = query(venuesRef, orderBy("venueName", "asc"));
-        const snapshot = await getDocs(q);
-        const venueList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Venue));
+        // Fetch all necessary data in parallel
+        const [venuesSnapshot, citiesSnapshot, stationsSnapshot] = await Promise.all([
+          getDocs(query(collection(db, "venues"), orderBy("venueName", "asc"))),
+          getDocs(query(collection(db, "cities"), orderBy("displayName", "asc"))),
+          getDocs(collection(db, "stations"))
+        ]);
+
+        const venueList = venuesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Venue));
+        const cityList = citiesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as City));
+        const stationList = stationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Station));
+
         setVenues(venueList);
+        setCities(cityList);
+        setStations(stationList);
       } catch (error) {
         console.error("Error fetching venues:", error);
       } finally {
@@ -327,21 +338,61 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
     fetchVenues();
   }, []);
 
+  const groupedVenues = useMemo(() => {
+    return venues.reduce((acc, venue) => {
+      const citySlug = venue.citySlug || 'unassigned';
+      if (!acc[citySlug]) {
+        acc[citySlug] = [];
+      }
+      acc[citySlug].push(venue);
+      return acc;
+    }, {} as Record<string, Venue[]>);
+  }, [venues]);
+
+  const stationsMap = useMemo(() => {
+    return stations.reduce((acc, station) => {
+      acc[station.id] = station.stationid;
+      return acc;
+    }, {} as Record<string, string>);
+  }, [stations]);
+
   return (
     <div>
       <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4">
         <BackIcon />
         Back to Dashboard
       </button>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {loading ? <p>Loading venues...</p> : venues.map(venue => (
-          <div key={venue.id} onClick={() => onSelectVenue(venue.id)} className="bg-white rounded-lg shadow-sm overflow-hidden cursor-pointer transition hover:shadow-md">
-            <img src={venue.photoUrl} alt={venue.venueName} className="w-full h-32 object-cover" />
-            <div className="p-3">
-              <h3 className="text-sm font-semibold truncate">{venue.venueName}</h3>
+      <div className="space-y-8">
+        {loading ? <p>Loading venues...</p> : Object.keys(groupedVenues).sort().map(citySlug => {
+          const city = cities.find(c => c.slug === citySlug);
+          return (
+            <div key={citySlug}>
+              <h2 className="text-xl font-bold mb-4 border-b pb-2">{city?.displayName || 'Unassigned Venues'}</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {groupedVenues[citySlug].map(venue => (
+                  <div key={venue.id} onClick={() => onSelectVenue(venue.id)} className="bg-white rounded-lg shadow-sm overflow-hidden cursor-pointer transition hover:shadow-md flex flex-col">
+                    <img src={venue.photoUrl} alt={venue.venueName} className="w-full h-32 object-cover" />
+                    <div className="p-3 flex-grow flex flex-col">
+                      <h3 className="text-sm font-semibold truncate">{venue.venueName}</h3>
+                      {venue.stationDetails && venue.stationDetails.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-100">
+                          <h4 className="text-xs font-bold text-gray-500 mb-1">Stations</h4>
+                          <ul className="space-y-1 text-xs">
+                            {venue.stationDetails.map((station, index) => (
+                              <li key={index} className="bg-gray-100 px-2 py-0.5 rounded-full text-gray-700 truncate">
+                                {stationsMap[station.stationId] || station.stationId}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <button onClick={onAddVenue} className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center font-semibold text-gray-500 transition hover:bg-gray-100 hover:border-gray-400 h-44">
           <PlusIcon />
           <span>Add Venue</span>

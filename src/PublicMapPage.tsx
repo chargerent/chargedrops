@@ -243,6 +243,7 @@ const PublicMapPage: React.FC = () => {
   const [loadingLive, setLoadingLive] = useState(false);
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const [mainPhoto, setMainPhoto] = useState<string | null>(null);
+  const [hoursExpanded, setHoursExpanded] = useState(false);
 
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -499,15 +500,22 @@ const PublicMapPage: React.FC = () => {
 
                   {selectedVenue.opening_hours_text && selectedVenue.opening_hours_text.length > 0 && (
                     <div>
-                      <h4 className="text-sm font-bold mb-2">Hours</h4>
-                      <ul className="text-sm text-gray-600 space-y-1">
-                        {selectedVenue.opening_hours_text.map((line, index) => (
-                          <li key={index} className="flex justify-between">
-                            <span>{line.split(': ')[0]}</span>
-                            <span className="font-medium">{line.split(': ')[1]}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <button onClick={() => setHoursExpanded(!hoursExpanded)} className="w-full flex justify-between items-center text-left">
+                        <h4 className="text-sm font-bold">Hours</h4>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-5 h-5 text-gray-400 transition-transform ${hoursExpanded ? 'rotate-180' : ''}`}>
+                          <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                      {hoursExpanded && (
+                        <ul className="text-sm text-gray-600 space-y-1 mt-2">
+                          {selectedVenue.opening_hours_text.map((line, index) => (
+                            <li key={index} className="flex justify-between">
+                              <span>{line.split(': ')[0]}</span>
+                              <span className="font-medium">{line.split(': ')[1]}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   )}
 
@@ -620,15 +628,22 @@ const PublicMapPage: React.FC = () => {
 
                   {selectedVenue.opening_hours_text && selectedVenue.opening_hours_text.length > 0 && (
                     <div>
-                      <h4 className="text-sm font-bold mb-2">Hours</h4>
-                      <ul className="text-sm text-gray-600 space-y-1">
-                        {selectedVenue.opening_hours_text.map((line, index) => (
-                          <li key={index} className="flex justify-between">
-                            <span>{line.split(': ')[0]}</span>
-                            <span className="font-medium">{line.split(': ')[1]}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <button onClick={() => setHoursExpanded(!hoursExpanded)} className="w-full flex justify-between items-center text-left">
+                        <h4 className="text-sm font-bold">Hours</h4>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-5 h-5 text-gray-400 transition-transform ${hoursExpanded ? 'rotate-180' : ''}`}>
+                          <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                      {hoursExpanded && (
+                        <ul className="text-sm text-gray-600 space-y-1 mt-2">
+                          {selectedVenue.opening_hours_text.map((line, index) => (
+                            <li key={index} className="flex justify-between">
+                              <span>{line.split(': ')[0]}</span>
+                              <span className="font-medium">{line.split(': ')[1]}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   )}
 
