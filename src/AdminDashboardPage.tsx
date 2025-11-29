@@ -589,8 +589,8 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
       });
 
       // Update the venue document
-      const dataToSave = { ...venue, stationDetails: venueStations.filter(vs => vs.stationId) };
-      delete dataToSave.id; // Don't save the id inside the document
+      const venueData = { ...venue, stationDetails: venueStations.filter(vs => vs.stationId) };
+      const { id, ...dataToSave } = venueData; // Use destructuring to exclude 'id'
       batch.update(venueRef, dataToSave);
 
       await batch.commit();
