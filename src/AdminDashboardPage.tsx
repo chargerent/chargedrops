@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { getAuth, signOut } from "firebase/auth";
+import { getAuth, signOut, onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { useJsApiLoader } from "@react-google-maps/api";
 import { collection, getDocs, orderBy, query, doc, getDoc, updateDoc, addDoc, where, writeBatch } from "firebase/firestore";
@@ -1009,6 +1009,7 @@ const AdminDashboardPage: React.FC = () => {
   const [isAddingCity, setIsAddingCity] = useState(false);
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
   const [isAddingVenue, setIsAddingVenue] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
 
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script-admin", // Use a unique ID
@@ -1017,9 +1018,32 @@ const AdminDashboardPage: React.FC = () => {
     nonce: (window as any).cspNonce, // This nonce must be passed from the server.
   });
 
+  // Check authentication status on component mount
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        // If no user is logged in, redirect to the login page.
+        navigate("/admin/login");
+      }
+      setLoadingAuth(false);
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, [auth, navigate]);
+
   const handleLogout = () => {
     signOut(auth).then(() => navigate("/admin/login"));
   };
+
+  // Show a loading indicator while checking auth status
+  if (loadingAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
