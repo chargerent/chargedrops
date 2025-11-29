@@ -289,7 +289,6 @@ const PublicMapPage: React.FC = () => {
   }, [selectedVenue, isLoaded]);
 
   const anyLoading = loadingVenues || loadingCity;
-  const sponsorName = city?.sponsorName ?? "Sponsor Name";
 
   return (
     <div className="min-h-screen flex flex-col">

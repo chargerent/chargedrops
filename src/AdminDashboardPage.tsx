@@ -255,7 +255,7 @@ const AddCityView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBa
   // State for city search
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
-  const [searchStatus, setSearchStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
+  const [, setSearchStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
 
 
   const [mapCenter, setMapCenter] = useState({ lat: "", lng: "" });
@@ -573,9 +573,9 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
       const newStationIds = new Set(venueStations.filter(vs => vs.stationId).map(vs => vs.stationId));
 
       // Stations to be marked as unassigned
-      originalStationIds.forEach(stationId => {
-        if (!newStationIds.has(stationId)) {
-          const stationRef = doc(db, "stations", stationId);
+      originalStationIds.forEach((stationId: string) => {
+        if (!newStationIds.has(stationId as string)) {
+          const stationRef = doc(db, "stations", stationId as string);
           batch.update(stationRef, { Assigned: false });
         }
       });
@@ -835,7 +835,7 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
       batch.set(newVenueRef, dataToSave);
 
       // 2. Update each assigned station in the batch
-      placeToSave.stationDetails.forEach(stationDetail => {
+      placeToSave.stationDetails.forEach((stationDetail: VenueStation) => {
         const stationRef = doc(db, "stations", stationDetail.stationId);
         batch.update(stationRef, { Assigned: true });
       });
