@@ -28,6 +28,7 @@ type Venue = {
   id: string;
   venueName: string;
   stationDetails?: VenueStation[];
+  citySlug?: string; // Add citySlug to group venues by city
   photoUrl: string;
 }
 
