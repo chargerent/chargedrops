@@ -687,9 +687,17 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
   const [loadingCities, setLoadingCities] = useState(true);
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
 
-  // Fetch all available stations
+  // Venue search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
+  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [stations, setStations] = useState<Station[]>([]);
+  const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
+  const [status, setStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
+
   useEffect(() => {
-    const fetchStations = async () => {
+    const fetchUnassignedStations = async () => {
       try {
         const stationsRef = collection(db, "stations");
         const q = query(
@@ -701,22 +709,13 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
         const stationList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Station));
         setStations(stationList);
       } catch (error) {
-        console.error("Error fetching stations:", error);
+        console.error("Error fetching unassigned stations:", error);
       }
     };
     if (isLoaded) {
-      fetchStations();
+      fetchUnassignedStations();
     }
   }, [isLoaded]);
-
-  // Venue search state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
-  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [stations, setStations] = useState<Station[]>([]);
-  const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
-  const [status, setStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
 
   useEffect(() => {
     const handler = setTimeout(() => {
