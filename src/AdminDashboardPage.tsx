@@ -511,7 +511,7 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
 };
 
 const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venueId, onBack }) => {
-  const [venue, setVenue] = useState<any | null>(null);
+  const [venue, setVenue] = useState<Venue | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [stations, setStations] = useState<Station[]>([]);
@@ -573,9 +573,9 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
       const newStationIds = new Set(venueStations.filter(vs => vs.stationId).map(vs => vs.stationId));
 
       // Stations to be marked as unassigned
-      originalStationIds.forEach((stationId: string) => {
-        if (!newStationIds.has(stationId as string)) {
-          const stationRef = doc(db, "stations", stationId as string);
+      originalStationIds.forEach(stationId => {
+        if (!newStationIds.has(stationId)) {
+          const stationRef = doc(db, "stations", stationId);
           batch.update(stationRef, { Assigned: false });
         }
       });
