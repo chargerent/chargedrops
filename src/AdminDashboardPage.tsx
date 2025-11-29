@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { getAuth, signOut, onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { useJsApiLoader } from "@react-google-maps/api";
-import { collection, getDocs, orderBy, query, doc, getDoc, updateDoc, addDoc, where, writeBatch } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, doc, getDoc, updateDoc, addDoc, where, writeBatch, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import chargedropsLogo from "/chargedrop_logo.svg";
 
@@ -497,13 +497,6 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
     }, {} as Record<string, Venue[]>);
   }, [venuesWithLiveCounts]);
 
-  const stationsMap = useMemo(() => {
-    return stations.reduce((acc, station) => {
-      acc[station.id] = station.stationid;
-      return acc;
-    }, {} as Record<string, string>);
-  }, [stations]);
-
   return (
     <div>
       <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4">
@@ -768,7 +761,6 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
   const [stations, setStations] = useState<Station[]>([]);
   const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
   const [status, setStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
-  const [allStations, setAllStations] = useState<Station[]>([]);
 
   useEffect(() => {
     const fetchUnassignedStations = async () => {
@@ -786,18 +778,8 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
         console.error("Error fetching unassigned stations:", error);
       }
     };
-    const fetchAllStations = async () => {
-      try {
-        const snapshot = await getDocs(collection(db, "stations"));
-        const stationList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Station));
-        setAllStations(stationList);
-      } catch (error) {
-        console.error("Error fetching all stations:", error);
-      }
-    };
     if (isLoaded) {
       fetchUnassignedStations();
-      fetchAllStations();
     }
   }, [isLoaded]);
 
