@@ -20,6 +20,7 @@ type FirestoreCity = {
   displayName: string;
   sponsorName: string;
   logoUrl?: string;
+  sponsorLogoUrl?: string;
   mapCenter?: { lat: number; lng: number };
   mapZoom?: number;
 };
@@ -56,6 +57,7 @@ type City = {
   displayName: string;
   sponsorName: string;
   logoUrl?: string;
+  sponsorLogoUrl?: string;
   mapCenter: { lat: number; lng: number } | null;
   mapZoom: number;
 };
@@ -118,6 +120,7 @@ const useCity = (citySlug: string) => {
           displayName: data.displayName ?? citySlug,
           sponsorName: data.sponsorName ?? "Sponsor",
           logoUrl: data.logoUrl ?? "",
+          sponsorLogoUrl: data.sponsorLogoUrl ?? "",
           mapCenter,
           mapZoom: typeof data.mapZoom === "number" ? data.mapZoom : 13,
         });
@@ -305,20 +308,25 @@ const PublicMapPage: React.FC = () => {
             alt="Chargedrops"
             className="hidden h-7 w-auto object-contain md:block"
           />
-          <div className="text-[11px] text-gray-500">
-            Powered by <span className="font-semibold">{sponsorName}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* City/Sponsor Logo now on the right */}
-          {city?.logoUrl && (
+          <div className="text-[11px] text-gray-500">Powered by</div>
+          {city?.sponsorLogoUrl && (
             <img
-              src={city.logoUrl}
-              alt={sponsorName}
+              src={city.sponsorLogoUrl}
+              alt={city.sponsorName}
               className="h-7 w-auto object-contain"
             />
           )}
         </div>
+        {/* City Logo on the right */}
+        {city?.logoUrl && (
+          <div>
+            <img
+              src={city.logoUrl}
+              alt={city.displayName}
+              className="h-8 w-auto object-contain"
+            />
+          </div>
+        )}
       </header>
 
       {/* Main layout */}
@@ -398,9 +406,7 @@ const PublicMapPage: React.FC = () => {
                         <img src={dropLogo} alt="charger" className="h-3 w-3" />
                         {loc.totalChargersAvailable} charger{loc.totalChargersAvailable === 1 ? '' : 's'}
                       </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium text-xs whitespace-nowrap">
-                        S {loc.totalSlotsFree} slots
-                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium text-xs whitespace-nowrap">{loc.totalSlotsFree} slots</span>
                     </div>
                   </div>
                 </div>
@@ -487,7 +493,7 @@ const PublicMapPage: React.FC = () => {
                         <img src={dropLogo} alt="charger" className="h-4 w-4" />
                         {selectedVenue.totalChargersAvailable} charger{selectedVenue.totalChargersAvailable === 1 ? '' : 's'}
                       </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium whitespace-nowrap">S {selectedVenue.totalSlotsFree} slots</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium whitespace-nowrap">{selectedVenue.totalSlotsFree} slots</span>
                     </div>
                   </div>
 
@@ -615,7 +621,7 @@ const PublicMapPage: React.FC = () => {
                         <img src={dropLogo} alt="charger" className="h-4 w-4" />
                         {selectedVenue.totalChargersAvailable} charger{selectedVenue.totalChargersAvailable === 1 ? '' : 's'}
                       </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium whitespace-nowrap">S {selectedVenue.totalSlotsFree} slots</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium whitespace-nowrap">{selectedVenue.totalSlotsFree} slots</span>
                     </div>
                   </div>
 

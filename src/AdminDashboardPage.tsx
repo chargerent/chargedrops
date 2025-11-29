@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { getAuth, signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { useJsApiLoader } from "@react-google-maps/api";
-import { collection, getDocs, orderBy, query, doc, getDoc, updateDoc, addDoc, where } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, doc, getDoc, updateDoc, addDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "./firebase";
 import chargedropsLogo from "/chargedrop_logo.svg";
 
@@ -14,12 +14,13 @@ type City = {
 };
 
 // More detailed type for the edit form
-type FullCityData = {
+type FullCityData = City & {
   id: string;
   displayName: string;
   slug: string;
   sponsorName: string;
   logoUrl?: string;
+  sponsorLogoUrl?: string;
   // Other fields like mapCenter, mapZoom can be added here
 };
 
@@ -218,6 +219,10 @@ const EditCityView: React.FC<{ cityId: string; onBack: () => void }> = ({ cityId
           <input type="text" name="logoUrl" value={city.logoUrl || ''} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
         <div className="flex justify-end gap-3">
+          <label className="block text-sm font-medium text-gray-700">Sponsor Logo URL</label>
+          <input type="text" name="sponsorLogoUrl" value={city.sponsorLogoUrl || ''} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+        </div>
+        <div className="flex justify-end gap-3 pt-4 border-t">
           <button
             type="button"
             onClick={onBack}
@@ -238,18 +243,71 @@ const EditCityView: React.FC<{ cityId: string; onBack: () => void }> = ({ cityId
   );
 };
 
-const AddCityView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+const AddCityView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBack, isLoaded }) => {
   const [newCity, setNewCity] = useState({
     displayName: "",
     slug: "",
     sponsorName: "",
     logoUrl: "",
+    sponsorLogoUrl: "",
   });
+  
+  // State for city search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
+  const [searchStatus, setSearchStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
+
+
+  const [mapCenter, setMapCenter] = useState({ lat: "", lng: "" });
+  const [mapZoom, setMapZoom] = useState("12");
+  const [primaryColor, setPrimaryColor] = useState("#0F172A");
   const [saving, setSaving] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setNewCity({ ...newCity, [name]: value });
+    if (name === 'displayName') {
+      setSearchQuery(value); // Sync search query with display name
+    }
+  };
+
+  // Autocomplete search for cities
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (searchQuery && isLoaded) {
+        const autocompleteService = new window.google.maps.places.AutocompleteService();
+        autocompleteService.getPlacePredictions({ input: searchQuery, types: ['(cities)'] }, (predictions, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
+            setSearchResults(predictions.map(p => ({ place_id: p.place_id, name: p.structured_formatting.main_text, formatted_address: p.structured_formatting.secondary_text || p.description })));
+            setSearchStatus(status);
+          } else {
+            setSearchResults([]);
+            setSearchStatus(status);
+          }
+        });
+      } else {
+        setSearchResults([]);
+      }
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(handler);
+  }, [searchQuery, isLoaded]);
+
+  const handleSelectCityFromSearch = (place: PlaceSearchResult) => {
+    const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
+    placesService.getDetails({ placeId: place.place_id, fields: ['name', 'geometry'] }, (details, status) => {
+      if (status === window.google.maps.places.PlacesServiceStatus.OK && details) {
+        setNewCity(prev => ({ ...prev, displayName: details.name || '' }));
+        setMapCenter({ lat: details.geometry?.location?.lat().toString() || '', lng: details.geometry?.location?.lng().toString() || '' });
+        setSearchResults([]);
+        setSearchQuery(details.name || '');
+      }
+    });
+  };
+
+  const handleMapCenterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setMapCenter({ ...mapCenter, [name]: value });
   };
 
   const handleSave = async () => {
@@ -257,9 +315,23 @@ const AddCityView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       alert("Display Name and Slug are required.");
       return;
     }
+    if (!mapCenter.lat || !mapCenter.lng || !mapZoom) {
+      alert("Map Center coordinates and Map Zoom are required.");
+      return;
+    }
     setSaving(true);
+    const dataToSave = {
+      ...newCity,
+      mapCenter: {
+        lat: parseFloat(mapCenter.lat),
+        lng: parseFloat(mapCenter.lng),
+      },
+      mapZoom: parseInt(mapZoom, 10),
+      primaryColor: primaryColor,
+    };
+
     try {
-      await addDoc(collection(db, "cities"), newCity);
+      await addDoc(collection(db, "cities"), dataToSave);
       alert("City added successfully!");
       onBack();
     } catch (error) {
@@ -279,8 +351,21 @@ const AddCityView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       <div className="bg-white p-6 rounded-lg shadow-sm space-y-4">
         <h2 className="text-xl font-bold">Add New City</h2>
         <div>
-          <label className="block text-sm font-medium text-gray-700">Display Name</label>
-          <input type="text" name="displayName" value={newCity.displayName} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+          <label className="block text-sm font-medium text-gray-700">City Name</label>
+          <div className="relative">
+            <input type="text" name="displayName" value={newCity.displayName} onChange={handleInputChange} placeholder="Search for a city..." className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" disabled={!isLoaded} />
+            {searchResults.length > 0 && (
+              <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg">
+                {searchResults.map(place => (
+                  <div key={place.place_id} onClick={() => handleSelectCityFromSearch(place)} className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0">
+                    <p className="font-semibold">{place.name}</p>
+                    <p className="text-sm text-gray-500">{place.formatted_address}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {!isLoaded && <p className="text-xs text-gray-500 mt-1">Loading map services...</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Slug (URL path)</label>
@@ -293,6 +378,28 @@ const AddCityView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <div>
           <label className="block text-sm font-medium text-gray-700">Logo URL</label>
           <input type="text" name="logoUrl" value={newCity.logoUrl} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Sponsor Logo URL</label>
+          <input type="text" name="sponsorLogoUrl" value={newCity.sponsorLogoUrl} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+        </div>
+        <div className="pt-4 border-t">
+          <h3 className="text-lg font-semibold mb-2">Map Settings</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Latitude</label>
+              <input type="number" name="lat" value={mapCenter.lat} onChange={handleMapCenterChange} placeholder="e.g., 34.0522" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Longitude</label>
+              <input type="number" name="lng" value={mapCenter.lng} onChange={handleMapCenterChange} placeholder="e.g., -118.2437" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Map Zoom</label>
+              <input type="number" name="mapZoom" value={mapZoom} onChange={(e) => setMapZoom(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
+            </div>
+          </div>
+          <input type="text" name="primaryColor" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onBack} className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
@@ -556,28 +663,11 @@ type VenueStation = {
   stationLocation: string;
 };
 
-const placesLibraries: ("places")[] = ["places"];
-
-const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBack, isLoaded }) => {
   // City selection state
   const [cities, setCities] = useState<City[]>([]);
   const [loadingCities, setLoadingCities] = useState(true);
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
-
-  // Venue search state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
-  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [stations, setStations] = useState<Station[]>([]);
-  const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
-  const [status, setStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
-
-  const { isLoaded } = useJsApiLoader({
-    id: "google-map-script-admin", // Use a unique ID
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-    libraries: placesLibraries,
-  });
 
   // Fetch all available stations
   useEffect(() => {
@@ -600,6 +690,15 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       fetchStations();
     }
   }, [isLoaded]);
+
+  // Venue search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
+  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [stations, setStations] = useState<Station[]>([]);
+  const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
+  const [status, setStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -679,10 +778,11 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     });
   };
 
-  const handleSave = async () => {
+  const handleSaveVenue = async () => {
     if (!selectedPlace) return;
     setSaving(true);
     try {
+      const batch = writeBatch(db);
       // Add selected stations to the place object before saving
       const placeToSave = {
         ...selectedPlace,
@@ -712,7 +812,18 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         totalSlotsFree: placeToSave.totalSlotsFree,
         opening_hours_text: selectedPlace.opening_hours_text,
       };
-      await addDoc(collection(db, "venues"), dataToSave);
+
+      // 1. Add the new venue to the batch
+      const newVenueRef = doc(collection(db, "venues"));
+      batch.set(newVenueRef, dataToSave);
+
+      // 2. Update each assigned station in the batch
+      placeToSave.stationDetails.forEach(stationDetail => {
+        const stationRef = doc(db, "stations", stationDetail.stationId);
+        batch.update(stationRef, { Assigned: true });
+      });
+
+      await batch.commit();
       alert("Venue added successfully!");
       onBack();
     } catch (error) {
@@ -861,7 +972,7 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <button type="button" onClick={handleBackToSearch} className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
               Back to Search
             </button>
-            <button onClick={handleSave} disabled={saving} className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-blue-300">
+            <button onClick={handleSaveVenue} disabled={saving} className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-blue-300">
               {saving ? "Saving..." : "Save Venue"}
             </button>
           </div>
@@ -871,6 +982,8 @@ const AddVenueView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   );
 };
 
+const placesLibraries: ("places")[] = ["places"];
+
 const AdminDashboardPage: React.FC = () => {
   const auth = getAuth();
   const navigate = useNavigate();
@@ -879,6 +992,13 @@ const AdminDashboardPage: React.FC = () => {
   const [isAddingCity, setIsAddingCity] = useState(false);
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
   const [isAddingVenue, setIsAddingVenue] = useState(false);
+
+  const { isLoaded } = useJsApiLoader({
+    id: "google-map-script-admin", // Use a unique ID
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+    libraries: placesLibraries,
+    nonce: (window as any).cspNonce, // This nonce must be passed from the server.
+  });
 
   const handleLogout = () => {
     signOut(auth).then(() => navigate("/admin/login"));
@@ -939,7 +1059,7 @@ const AdminDashboardPage: React.FC = () => {
           <EditCityView cityId={selectedCityId} onBack={() => setSelectedCityId(null)} />
         )}
         {view === "cities" && isAddingCity && (
-          <AddCityView onBack={() => { setIsAddingCity(false); setView("cities"); }} />
+          <AddCityView onBack={() => { setIsAddingCity(false); setView("cities"); }} isLoaded={isLoaded} />
         )}
 
         {view === "venues" && !isAddingVenue && !selectedVenueId && (
@@ -953,7 +1073,7 @@ const AdminDashboardPage: React.FC = () => {
           <EditVenueView venueId={selectedVenueId} onBack={() => setSelectedVenueId(null)} />
         )}
         {view === "venues" && isAddingVenue && (
-          <AddVenueView onBack={() => setIsAddingVenue(false)} />
+          <AddVenueView onBack={() => setIsAddingVenue(false)} isLoaded={isLoaded} />
         )}
       </main>
     </div>

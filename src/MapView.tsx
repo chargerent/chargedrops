@@ -115,7 +115,7 @@ const MapView: React.FC<MapViewProps> = ({
                   {venue.totalChargersAvailable} charger{venue.totalChargersAvailable === 1 ? '' : 's'}
                 </span>
                 <span className="text-gray-400">|</span>
-                <span className="text-gray-500">S {venue.totalSlotsFree}</span>
+                <span className="text-gray-500">{venue.totalSlotsFree} slots</span>
               </div>
             </div>
             {/* The triangle pointing down */}
