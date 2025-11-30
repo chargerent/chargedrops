@@ -46,7 +46,13 @@ const HomePage: React.FC = () => {
         </div>
       </header>
       <main className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">Choose a City</h1>
+        <div className="mb-12">
+          <img
+            src="https://firebasestorage.googleapis.com/v0/b/chargedrops-dev.firebasestorage.app/o/logos%2Fsite%2Fhownew.png?alt=media&token=da7bfa78-4219-4ea4-b92c-a2d87649e531"
+            alt="How Chargedrops works infographic"
+            className="w-full h-auto rounded-lg shadow-md"
+          />
+        </div>
         {loading ? (
           <p className="text-center text-gray-500">Loading cities...</p>
         ) : (

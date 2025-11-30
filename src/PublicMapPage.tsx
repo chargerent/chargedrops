@@ -265,7 +265,7 @@ const ActionButton: React.FC<{ href: string; label: string; icon: React.ReactNod
   </a>
 );
 
-const placesLibrary: ("places")[] = ["places"];
+const libraries: ("places")[] = ["places"];
 
 const PublicMapPage: React.FC = () => {
   const params = useParams();
@@ -286,7 +286,7 @@ const PublicMapPage: React.FC = () => {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script-public",
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-    libraries: placesLibrary,
+    libraries,
   });
 
   const [liveVenueData, setLiveVenueData] = useState<{ open_now?: boolean; rating?: number; user_ratings_total?: number; } | null>(null);
@@ -382,7 +382,7 @@ const PublicMapPage: React.FC = () => {
             <img
               src={city.sponsorLogoUrl}
               alt={city.sponsorName}
-              className="h-7 w-auto object-contain"
+              className="h-4 sm:h-5 w-auto object-contain"
             />
           )}
         </div>
