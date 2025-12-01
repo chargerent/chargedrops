@@ -339,7 +339,7 @@ const PublicMapPage: React.FC = () => {
       }
       return new Promise<Venue>(resolve => {
         placesService.getDetails({
-          placeId: venue.place_id,
+          placeId: venue.place_id!,
           fields: ['photos']
         }, (details, status) => {
           if (status === window.google.maps.places.PlacesServiceStatus.OK && details?.photos && details.photos.length > 0) {
