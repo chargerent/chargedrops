@@ -50,7 +50,7 @@ const HomePage: React.FC = () => {
           <img
             src="https://firebasestorage.googleapis.com/v0/b/chargedrops-dev.firebasestorage.app/o/logos%2Fsite%2Fhownew.png?alt=media&token=da7bfa78-4219-4ea4-b92c-a2d87649e531"
             alt="How Chargedrops works infographic"
-            className="w-full h-auto rounded-lg shadow-md"
+            className="w-full md:w-1/2 h-auto rounded-lg shadow-md mx-auto"
           />
         </div>
         {loading ? (
@@ -60,7 +60,7 @@ const HomePage: React.FC = () => {
             {cities.map(city => (
               <Link to={`/map/${city.slug}`} key={city.id} className="flex flex-col items-center justify-center gap-3 rounded-lg bg-white p-4 text-center font-semibold text-gray-800 shadow-sm transition hover:shadow-md h-32">
                 {city.logoUrl ? (
-                  <img src={city.logoUrl} alt={city.displayName} className="h-12 max-w-full object-contain" />
+                  <img src={city.logoUrl} alt={city.displayName} className="h-16 w-24 object-contain" />
                 ) : (
                   <CitiesIcon />
                 )}

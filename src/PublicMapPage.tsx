@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom"; // Correct import
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useJsApiLoader } from "@react-google-maps/api";
 import {
   collection,
@@ -14,6 +14,14 @@ import { MdDirections, MdPhone, MdLanguage } from "react-icons/md";
 import MapView from "./MapView";
 import chargedropsLogo from "/chargedrop_logo.svg"; // large logo
 import dropLogo from "/drop_logo.svg"; // small logo
+
+// Type for the list of all cities in the dropdown
+type DropdownCity = {
+  id: string;
+  slug: string;
+  displayName: string;
+  logoUrl?: string;
+};
 
 // Define types for raw Firestore data to avoid using `any`
 type FirestoreCity = {
@@ -270,6 +278,7 @@ const libraries: ("places")[] = ["places"];
 const PublicMapPage: React.FC = () => {
   const params = useParams();
   const citySlug = params.citySlug || "demo-city"; // Use slug from URL or fallback
+  const navigate = useNavigate();
 
   const { city, loading: loadingCity, error: cityError } = useCity(citySlug);
   const {
@@ -283,16 +292,76 @@ const PublicMapPage: React.FC = () => {
     error: stationError,
   } = useStations();
 
+  const [venuesWithLivePhotos, setVenuesWithLivePhotos] = useState<Venue[]>([]);
+  const [loadingPhotos, setLoadingPhotos] = useState(true);
+  const [allCities, setAllCities] = useState<DropdownCity[]>([]);
+  const [isCityDropdownOpen, setCityDropdownOpen] = useState(false);
+
+  // Fetch all cities for the dropdown
+  useEffect(() => {
+    const fetchAllCities = async () => {
+      try {
+        const citiesRef = collection(db, "cities");
+        const q = query(citiesRef, orderBy("displayName", "asc"));
+        const snapshot = await getDocs(q);
+        const cityList = snapshot.docs.map(
+          (doc) => ({ id: doc.id, ...doc.data() } as DropdownCity)
+        );
+        setAllCities(cityList);
+      } catch (error) {
+        console.error("Error fetching all cities:", error);
+      }
+    };
+    fetchAllCities();
+  }, []);
+
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script-public",
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
     libraries,
   });
 
-  const [liveVenueData, setLiveVenueData] = useState<{ open_now?: boolean; rating?: number; user_ratings_total?: number; } | null>(null);
+  // Effect to fetch live photos for all venues on load
+  useEffect(() => {
+    if (!isLoaded || venues.length === 0) {
+      if (!loadingVenues) {
+        setLoadingPhotos(false);
+      }
+      return;
+    }
+
+    setLoadingPhotos(true);
+    const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
+
+    const photoPromises = venues.map(venue => {
+      if (!venue.place_id) {
+        return Promise.resolve({ ...venue }); // Keep original venue data if no place_id
+      }
+      return new Promise<Venue>(resolve => {
+        placesService.getDetails({
+          placeId: venue.place_id,
+          fields: ['photos']
+        }, (details, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && details?.photos && details.photos.length > 0) {
+            resolve({ ...venue, photoUrl: details.photos[0].getUrl({ maxWidth: 400 }) });
+          } else {
+            resolve({ ...venue }); // Resolve with original venue data on failure
+          }
+        });
+      });
+    });
+
+    Promise.all(photoPromises).then(updatedVenues => {
+      setVenuesWithLivePhotos(updatedVenues);
+      setLoadingPhotos(false);
+    });
+  }, [venues, isLoaded, loadingVenues]);
+
+  const [liveVenueData, setLiveVenueData] = useState<{ open_now?: boolean; rating?: number; user_ratings_total?: number; photos?: string[]; } | null>(null);
   const [loadingLive, setLoadingLive] = useState(false);
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const [mainPhoto, setMainPhoto] = useState<string | null>(null);
+  const [livePhotos, setLivePhotos] = useState<string[]>([]);
   const [hoursExpanded, setHoursExpanded] = useState(false);
 
 
@@ -300,14 +369,14 @@ const PublicMapPage: React.FC = () => {
 
   // This calculates the live counts for chargers and slots
   const venuesWithLiveCounts = useMemo(() => {
-    if (loadingVenues || loadingStations) return [];
+    if (loadingVenues || loadingStations || loadingPhotos) return [];
 
-    const stationsMap = stations.reduce((acc, station) => {
+    const stationsMap = stations.reduce((acc, station) => { 
       acc[station.id] = station;
       return acc;
     }, {} as Record<string, Station>);
 
-    return venues.map(venue => {
+    return venuesWithLivePhotos.map(venue => {
       let totalChargersAvailable = 0;
       let totalSlotsFree = 0;
       venue.stationDetails?.forEach(detail => {
@@ -319,19 +388,13 @@ const PublicMapPage: React.FC = () => {
       });
       return { ...venue, totalChargersAvailable, totalSlotsFree };
     });
-  }, [venues, stations, loadingVenues, loadingStations]);
+  }, [venuesWithLivePhotos, stations, loadingVenues, loadingStations, loadingPhotos]);
 
   const selectedVenue = useMemo(
     () => venuesWithLiveCounts.find((v) => v.id === selectedId) ?? null,
     [venuesWithLiveCounts, selectedId]
   );
 
-  // Set initial selected venue and main photo when venues load or selection changes
-  useEffect(() => {
-    if (selectedVenue) {
-      setMainPhoto(selectedVenue.photoUrl);
-    }
-  }, [selectedVenue]);
 
 
   // HYBRID APPROACH: Fetch live data for the selected venue
@@ -339,26 +402,41 @@ const PublicMapPage: React.FC = () => {
     if (selectedVenue && selectedVenue.place_id && isLoaded) {
       setLoadingLive(true);
       const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
+      // Clear previous photos to prevent showing stale images
+      setLivePhotos([]);
+      setMainPhoto(null);
       
       placesService.getDetails({
         placeId: selectedVenue.place_id,
-        fields: ['opening_hours', 'rating', 'user_ratings_total'] // Only fetch what's needed
+        fields: ['opening_hours', 'rating', 'user_ratings_total', 'photos'] // Fetch photos as well
       }, (details, status) => {
         if (status === window.google.maps.places.PlacesServiceStatus.OK && details) {
+          const newPhotos = details.photos ? details.photos.map(p => p.getUrl({ maxWidth: 800 })) : [];
+          setLivePhotos(newPhotos);
+          if (newPhotos.length > 0) {
+            setMainPhoto(newPhotos[0]);
+          } else {
+            setMainPhoto(selectedVenue.photoUrl); // Fallback to stored URL if no live photos
+          }
           setLiveVenueData({
             open_now: details.opening_hours?.isOpen(),
             rating: details.rating,
             user_ratings_total: details.user_ratings_total,
+            photos: newPhotos,
           });
+        } else {
+          // If API fails, fallback to the stored photo URL
+          setMainPhoto(selectedVenue.photoUrl);
         }
         setLoadingLive(false);
       });
     } else {
-      setLiveVenueData(null); // Clear live data if no venue is selected
+      setLiveVenueData(null);
+      setLivePhotos([]);
     }
   }, [selectedVenue, isLoaded]);
 
-  const anyLoading = loadingVenues || loadingCity || loadingStations;
+  const anyLoading = loadingVenues || loadingCity || loadingStations || loadingPhotos;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -387,15 +465,45 @@ const PublicMapPage: React.FC = () => {
           )}
         </div>
         {/* City Logo on the right */}
-        {city?.logoUrl && (
-          <div>
-            <img
-              src={city.logoUrl}
-              alt={city.displayName}
-              className="h-8 w-auto object-contain"
-            />
-          </div>
-        )}
+        <div className="relative">
+          {city?.logoUrl && (
+            <button
+              onClick={() => setCityDropdownOpen(!isCityDropdownOpen)}
+              className="flex items-center gap-2"
+            >
+              <img
+                src={city.logoUrl}
+                alt={city.displayName}
+                className="h-8 w-auto object-contain"
+              />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-5 h-5 text-gray-400 transition-transform ${isCityDropdownOpen ? 'rotate-180' : ''}`}>
+                <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )}
+          {isCityDropdownOpen && (
+            <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-20 border">
+              <ul className="py-1">
+                {allCities.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      onClick={() => {
+                        navigate(`/map/${c.slug}`);
+                        setCityDropdownOpen(false);
+                        // Force a reload to re-initialize state for the new city
+                        window.location.href = `/map/${c.slug}`;
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-3"
+                    >
+                      {c.logoUrl && <img src={c.logoUrl} alt={c.displayName} className="h-8 w-12 object-contain" />}
+                      <span>{c.displayName}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Main layout */}
@@ -424,7 +532,7 @@ const PublicMapPage: React.FC = () => {
         {/* Floating panel for locations */}
         {/* On mobile, it's a bottom sheet. On desktop, a left sidebar. */}
         <section className="hidden md:block absolute top-0 bottom-0 left-0 z-10 md:w-96 lg:w-1/3 bg-gray-50">
-          {/* Location list container - shown only if no venue is selected on desktop */}
+          {/* Location list container - shown only if no venue is selected on desktop */} 
           <div className={`p-3 flex-col gap-3 overflow-y-auto h-full ${selectedId ? 'hidden' : 'flex'}`} data-testid="venue-list">
             {anyLoading && !venues.length && (
               <div className="text-xs text-gray-500">
@@ -440,7 +548,7 @@ const PublicMapPage: React.FC = () => {
               <div className="text-xs text-red-600">{venueError || stationError}</div>
             )}
 
-            {!anyLoading && !venueError && !stationError && venues.length === 0 && (
+            {!anyLoading && !venueError && !stationError && venuesWithLiveCounts.length === 0 && (
               <div className="text-xs text-gray-500">
                 No locations found for this city yet.
               </div>
@@ -453,7 +561,11 @@ const PublicMapPage: React.FC = () => {
                 className="bg-white rounded-xl shadow-sm overflow-hidden cursor-pointer border border-transparent hover:border-gray-200 hover:shadow-md transition md:w-full"
               >
                 <div className="flex items-center">
-                  <img src={loc.photoUrl} alt={loc.venueName} className="w-24 h-24 object-cover flex-shrink-0" />
+                  <img 
+                    src={loc.photoUrl} 
+                    alt={loc.venueName} 
+                    className="w-24 h-24 object-cover flex-shrink-0 bg-gray-100"
+                  />
                   <div className="p-3 flex-1 flex justify-between items-start">
                     <div>
                       <h3 className="text-base font-bold">{loc.venueName}</h3>
@@ -501,27 +613,27 @@ const PublicMapPage: React.FC = () => {
                 <span className="text-sm font-semibold">Back to all locations</span>
               </button>
               <article className="bg-white overflow-hidden">
-                {selectedVenue.photos && selectedVenue.photos.length > 1 ? (
+                {mainPhoto ? (
+                  livePhotos.length > 1 ? (
                   <div className="grid grid-cols-4 gap-1 p-1">
                     <div className="col-span-4">
                       <img
-                        src={mainPhoto ?? selectedVenue.photoUrl}
+                        src={mainPhoto}
                         alt={selectedVenue.venueName}
                         className="w-full h-48 object-cover rounded-md"
                       />
                     </div>
-                    {selectedVenue.photos.slice(0, 4).map((photo, index) => (
+                    {livePhotos.slice(0, 4).map((photo, index) => (
                       <div key={index} className="col-span-1">
                         <img src={photo} alt={`Thumb ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
                       </div>
                     ))}
                   </div>
+                  ) : (
+                    <img src={mainPhoto} alt={selectedVenue.venueName} className="w-full h-48 object-cover" />
+                  )
                 ) : (
-                  <img
-                    src={selectedVenue.photoUrl}
-                    alt={selectedVenue.venueName}
-                    className="w-full h-48 object-cover"
-                  />
+                  <div className="w-full h-48 bg-gray-200 animate-pulse" />
                 )}
 
                 <div className="p-4 space-y-4">
@@ -637,27 +749,27 @@ const PublicMapPage: React.FC = () => {
               
               {/* Re-using the article content structure */}
               <article className="bg-white overflow-hidden">
-                {selectedVenue.photos && selectedVenue.photos.length > 1 ? (
-                  <div className="grid grid-cols-4 gap-1 p-1">
-                    <div className="col-span-4">
-                      <img
-                        src={mainPhoto ?? selectedVenue.photoUrl}
-                        alt={selectedVenue.venueName}
-                        className="w-full h-48 object-cover rounded-md"
-                      />
-                    </div>
-                    {selectedVenue.photos.slice(0, 4).map((photo, index) => (
-                      <div key={index} className="col-span-1">
-                        <img src={photo} alt={`Thumb ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
+                {mainPhoto ? (
+                  livePhotos.length > 1 ? (
+                    <div className="grid grid-cols-4 gap-1 p-1">
+                      <div className="col-span-4">
+                        <img
+                          src={mainPhoto}
+                          alt={selectedVenue.venueName}
+                          className="w-full h-48 object-cover rounded-md"
+                        />
                       </div>
-                    ))}
-                  </div>
+                      {livePhotos.slice(0, 4).map((photo, index) => (
+                        <div key={index} className="col-span-1">
+                          <img src={photo} alt={`Thumb ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <img src={mainPhoto} alt={selectedVenue.venueName} className="w-full h-48 object-cover" />
+                  )
                 ) : (
-                  <img
-                    src={selectedVenue.photoUrl}
-                    alt={selectedVenue.venueName}
-                    className="w-full h-48 object-cover"
-                  />
+                  <div className="w-full h-48 bg-gray-200 animate-pulse" />
                 )}
 
                 <div className="p-4 space-y-4">
