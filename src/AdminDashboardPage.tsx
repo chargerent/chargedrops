@@ -28,6 +28,7 @@ type FullCityData = City & {
 type Venue = {
   id: string;
   venueName: string;
+  place_id?: string; // Add Google Place ID
   stationDetails?: VenueStation[];
   citySlug?: string; // Add citySlug to group venues by city
   photoUrl: string;
@@ -96,6 +97,29 @@ const StarRating: React.FC<{ rating: number; reviewCount: number }> = ({ rating,
       <span>({reviewCount})</span>
     </div>
   );
+};
+
+const VenueImage: React.FC<{ placeId: string; venueName: string; className: string; isLoaded: boolean }> = ({ placeId, venueName, className, isLoaded }) => {
+  const [imageUrl, setImageUrl] = useState<string>('https://via.placeholder.com/400x240?text=Loading...');
+
+  useEffect(() => {
+    if (isLoaded && placeId) {
+      const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
+      placesService.getDetails({ placeId: placeId, fields: ['photos'] }, (details, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && details?.photos?.[0]) {
+          const photoUrl = details.photos[0].getUrl({ maxWidth: 400 });
+          setImageUrl(photoUrl);
+        } else {
+          console.error(`Failed to fetch photo for placeId ${placeId}: ${status}`);
+          setImageUrl('https://via.placeholder.com/400x240?text=No+Image');
+        }
+      });
+    } else if (!placeId) {
+        setImageUrl('https://via.placeholder.com/400x240?text=No+Place+ID');
+    }
+  }, [isLoaded, placeId]);
+
+  return <img src={imageUrl} alt={venueName} className={className} />;
 };
 
 const ManageCitiesView: React.FC<{ onBack: () => void; onSelectCity: (id: string) => void; onAddCity: () => void; }> = ({ onBack, onSelectCity, onAddCity }) => {
@@ -416,7 +440,7 @@ const AddCityView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBa
   );
 };
 
-const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; onSelectVenue: (id: string) => void; }> = ({ onBack, onAddVenue, onSelectVenue }) => {
+const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; onSelectVenue: (id: string) => void; isLoaded: boolean }> = ({ onBack, onAddVenue, onSelectVenue, isLoaded }) => {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [stations, setStations] = useState<Station[]>([]);
@@ -512,7 +536,11 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {groupedVenues[citySlug].map((venue: any) => ( // Use the enriched venue object
                   <div key={venue.id} onClick={() => onSelectVenue(venue.id)} className="bg-white rounded-lg shadow-sm overflow-hidden cursor-pointer transition hover:shadow-md flex flex-col">
-                    <img src={venue.photoUrl} alt={venue.venueName} className="w-full h-32 object-cover" />
+                    {venue.place_id ? (
+                      <VenueImage placeId={venue.place_id} venueName={venue.venueName} className="w-full h-32 object-cover" isLoaded={isLoaded} />
+                    ) : (
+                      <img src={venue.photoUrl} alt={venue.venueName} className="w-full h-32 object-cover" />
+                    )}
                     <div className="p-3 flex-grow flex flex-col">
                       <h3 className="text-sm font-semibold truncate flex-grow">{venue.venueName}</h3>
                       <div className="mt-2 pt-2 border-t border-gray-100 text-xs grid grid-cols-2 gap-2">
@@ -1170,6 +1198,7 @@ const AdminDashboardPage: React.FC = () => {
             onBack={() => setView("dashboard")}
             onAddVenue={() => setIsAddingVenue(true)}
             onSelectVenue={(id) => setSelectedVenueId(id)}
+            isLoaded={isLoaded}
           />
         )}
         {view === "venues" && selectedVenueId && (
