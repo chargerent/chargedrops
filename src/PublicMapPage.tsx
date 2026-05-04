@@ -14,6 +14,14 @@ import { MdDirections, MdPhone, MdLanguage } from "react-icons/md";
 import MapView from "./MapView";
 import chargedropsLogo from "/chargedrop_logo.svg"; // large logo
 import dropLogo from "/drop_logo.svg"; // small logo
+import {
+  DEFAULT_VENUE_PHOTO_URL,
+  type PlacePhotoPreview,
+  fetchPlaceById,
+  getCustomPhotoUrl,
+  getPhotoPreviews,
+  getVenueFallbackPhotoUrl,
+} from "./googlePlaces";
 
 // Type for the list of all cities in the dropdown
 type DropdownCity = {
@@ -55,6 +63,7 @@ type Venue = {
   phone: string;
   website: string;
   photoUrl: string;
+  photoAttributions?: string[];
   totalChargersAvailable: number;
   totalSlotsFree: number;
   status: string;
@@ -95,6 +104,8 @@ const StarRating: React.FC<{ rating: number; reviewCount: number }> = ({ rating,
     </div>
   );
 };
+
+const PhotoAttribution: React.FC<{ attributions?: string[] }> = () => null;
 
 /**
  * Custom hook to fetch city configuration from Firestore.
@@ -192,9 +203,8 @@ const useVenues = (citySlug: string) => {
             address: data.address ?? "",
             phone: data.phone ?? "",
             website: data.website ?? "",
-            photoUrl:
-              data.photoUrl ??
-              "https://via.placeholder.com/400x240?text=Chargedrops+Location",
+            photoUrl: getVenueFallbackPhotoUrl(data.photoUrl),
+            photoAttributions: [],
             totalChargersAvailable: Number(data.totalChargersAvailable ?? 0),
             totalSlotsFree: Number(data.totalSlotsFree ?? 0),
             status: data.status ?? "unknown",
@@ -321,8 +331,10 @@ const PublicMapPage: React.FC = () => {
     libraries,
   });
 
-  // Effect to fetch live photos for all venues on load
+  // Effect to fetch fresh Google photo URLs for the current render.
   useEffect(() => {
+    let cancelled = false;
+
     if (!isLoaded || venues.length === 0) {
       if (!loadingVenues) {
         setLoadingPhotos(false);
@@ -331,37 +343,50 @@ const PublicMapPage: React.FC = () => {
     }
 
     setLoadingPhotos(true);
-    const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
 
-    const photoPromises = venues.map(venue => {
+    const photoPromises = venues.map(async (venue) => {
       if (!venue.place_id) {
-        return Promise.resolve({ ...venue }); // Keep original venue data if no place_id
+        return {
+          ...venue,
+          photoUrl: getVenueFallbackPhotoUrl(venue.photoUrl),
+          photoAttributions: [],
+        };
       }
-      return new Promise<Venue>(resolve => {
-        placesService.getDetails({
-          placeId: venue.place_id!,
-          fields: ['photos']
-        }, (details, status) => {
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && details?.photos && details.photos.length > 0) {
-            resolve({ ...venue, photoUrl: details.photos[0].getUrl({ maxWidth: 400 }) });
-          } else {
-            resolve({ ...venue }); // Resolve with original venue data on failure
-          }
-        });
-      });
+
+      try {
+        const place = await fetchPlaceById(venue.place_id, ["photos"]);
+        const [photo] = getPhotoPreviews(place.photos, 400, 1);
+        return {
+          ...venue,
+          photoUrl: photo?.url ?? getVenueFallbackPhotoUrl(venue.photoUrl),
+          photoAttributions: photo?.attributions ?? [],
+        };
+      } catch (error) {
+        console.error("Failed to fetch venue photo", venue.place_id, error);
+        return {
+          ...venue,
+          photoUrl: getVenueFallbackPhotoUrl(venue.photoUrl),
+          photoAttributions: [],
+        };
+      }
     });
 
     Promise.all(photoPromises).then(updatedVenues => {
+      if (cancelled) return;
       setVenuesWithLivePhotos(updatedVenues);
       setLoadingPhotos(false);
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [venues, isLoaded, loadingVenues]);
 
-  const [liveVenueData, setLiveVenueData] = useState<{ open_now?: boolean; rating?: number; user_ratings_total?: number; photos?: string[]; } | null>(null);
+  const [liveVenueData, setLiveVenueData] = useState<{ open_now?: boolean; rating?: number; user_ratings_total?: number; photos?: PlacePhotoPreview[]; } | null>(null);
   const [loadingLive, setLoadingLive] = useState(false);
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
-  const [mainPhoto, setMainPhoto] = useState<string | null>(null);
-  const [livePhotos, setLivePhotos] = useState<string[]>([]);
+  const [mainPhoto, setMainPhoto] = useState<PlacePhotoPreview | null>(null);
+  const [livePhotos, setLivePhotos] = useState<PlacePhotoPreview[]>([]);
   const [hoursExpanded, setHoursExpanded] = useState(false);
 
 
@@ -399,41 +424,70 @@ const PublicMapPage: React.FC = () => {
 
   // HYBRID APPROACH: Fetch live data for the selected venue
   useEffect(() => {
+    let cancelled = false;
+
     if (selectedVenue && selectedVenue.place_id && isLoaded) {
       setLoadingLive(true);
-      const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
       // Clear previous photos to prevent showing stale images
       setLivePhotos([]);
       setMainPhoto(null);
-      
-      placesService.getDetails({
-        placeId: selectedVenue.place_id,
-        fields: ['opening_hours', 'rating', 'user_ratings_total', 'photos'] // Fetch photos as well
-      }, (details, status) => {
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && details) {
-          const newPhotos = details.photos ? details.photos.map(p => p.getUrl({ maxWidth: 800 })) : [];
+
+      fetchPlaceById(selectedVenue.place_id, [
+        "photos",
+        "rating",
+        "userRatingCount",
+        "regularOpeningHours",
+      ])
+        .then(async (place) => {
+          if (cancelled) return;
+          const newPhotos = getPhotoPreviews(place.photos, 800);
+          const fallbackPhotoUrl =
+            getCustomPhotoUrl(selectedVenue.photoUrl) || DEFAULT_VENUE_PHOTO_URL;
+          const fallbackPhoto = {
+            url: fallbackPhotoUrl,
+            attributions: selectedVenue.photoAttributions ?? [],
+          };
+          const openNow = await place.isOpen().catch(() => undefined);
+
+          if (cancelled) return;
           setLivePhotos(newPhotos);
-          if (newPhotos.length > 0) {
-            setMainPhoto(newPhotos[0]);
-          } else {
-            setMainPhoto(selectedVenue.photoUrl); // Fallback to stored URL if no live photos
-          }
+          setMainPhoto(newPhotos[0] ?? fallbackPhoto);
           setLiveVenueData({
-            open_now: details.opening_hours?.isOpen(),
-            rating: details.rating,
-            user_ratings_total: details.user_ratings_total,
+            open_now: openNow,
+            rating: place.rating ?? undefined,
+            user_ratings_total: place.userRatingCount ?? undefined,
             photos: newPhotos,
           });
-        } else {
-          // If API fails, fallback to the stored photo URL
-          setMainPhoto(selectedVenue.photoUrl);
-        }
-        setLoadingLive(false);
-      });
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.error("Failed to fetch live venue details", selectedVenue.place_id, error);
+          setMainPhoto({
+            url: getVenueFallbackPhotoUrl(selectedVenue.photoUrl),
+            attributions: selectedVenue.photoAttributions ?? [],
+          });
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setLoadingLive(false);
+          }
+        });
     } else {
       setLiveVenueData(null);
       setLivePhotos([]);
+      if (selectedVenue) {
+        setMainPhoto({
+          url: getVenueFallbackPhotoUrl(selectedVenue.photoUrl),
+          attributions: selectedVenue.photoAttributions ?? [],
+        });
+      } else {
+        setMainPhoto(null);
+      }
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedVenue, isLoaded]);
 
   const anyLoading = loadingVenues || loadingCity || loadingStations || loadingPhotos;
@@ -561,11 +615,14 @@ const PublicMapPage: React.FC = () => {
                 className="bg-white rounded-xl shadow-sm overflow-hidden cursor-pointer border border-transparent hover:border-gray-200 hover:shadow-md transition md:w-full"
               >
                 <div className="flex items-center">
-                  <img 
-                    src={loc.photoUrl} 
-                    alt={loc.venueName} 
-                    className="w-24 h-24 object-cover flex-shrink-0 bg-gray-100"
-                  />
+                  <div className="relative h-24 w-24 flex-shrink-0 bg-gray-100">
+                    <img
+                      src={loc.photoUrl}
+                      alt={loc.venueName}
+                      className="h-full w-full object-cover"
+                    />
+                    <PhotoAttribution attributions={loc.photoAttributions} />
+                  </div>
                   <div className="p-3 flex-1 flex justify-between items-start">
                     <div>
                       <h3 className="text-base font-bold">{loc.venueName}</h3>
@@ -617,20 +674,26 @@ const PublicMapPage: React.FC = () => {
                   livePhotos.length > 1 ? (
                   <div className="grid grid-cols-4 gap-1 p-1">
                     <div className="col-span-4">
-                      <img
-                        src={mainPhoto}
-                        alt={selectedVenue.venueName}
-                        className="w-full h-48 object-cover rounded-md"
-                      />
+                      <div className="relative">
+                        <img
+                          src={mainPhoto.url}
+                          alt={selectedVenue.venueName}
+                          className="w-full h-48 object-cover rounded-md"
+                        />
+                        <PhotoAttribution attributions={mainPhoto.attributions} />
+                      </div>
                     </div>
                     {livePhotos.slice(0, 4).map((photo, index) => (
                       <div key={index} className="col-span-1">
-                        <img src={photo} alt={`Thumb ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
+                        <img src={photo.url} alt={`Thumb ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
                       </div>
                     ))}
                   </div>
                   ) : (
-                    <img src={mainPhoto} alt={selectedVenue.venueName} className="w-full h-48 object-cover" />
+                    <div className="relative">
+                      <img src={mainPhoto.url} alt={selectedVenue.venueName} className="w-full h-48 object-cover" />
+                      <PhotoAttribution attributions={mainPhoto.attributions} />
+                    </div>
                   )
                 ) : (
                   <div className="w-full h-48 bg-gray-200 animate-pulse" />
@@ -753,20 +816,26 @@ const PublicMapPage: React.FC = () => {
                   livePhotos.length > 1 ? (
                     <div className="grid grid-cols-4 gap-1 p-1">
                       <div className="col-span-4">
-                        <img
-                          src={mainPhoto}
-                          alt={selectedVenue.venueName}
-                          className="w-full h-48 object-cover rounded-md"
-                        />
+                        <div className="relative">
+                          <img
+                            src={mainPhoto.url}
+                            alt={selectedVenue.venueName}
+                            className="w-full h-48 object-cover rounded-md"
+                          />
+                          <PhotoAttribution attributions={mainPhoto.attributions} />
+                        </div>
                       </div>
                       {livePhotos.slice(0, 4).map((photo, index) => (
                         <div key={index} className="col-span-1">
-                          <img src={photo} alt={`Thumb ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
+                          <img src={photo.url} alt={`Thumb ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <img src={mainPhoto} alt={selectedVenue.venueName} className="w-full h-48 object-cover" />
+                    <div className="relative">
+                      <img src={mainPhoto.url} alt={selectedVenue.venueName} className="w-full h-48 object-cover" />
+                      <PhotoAttribution attributions={mainPhoto.attributions} />
+                    </div>
                   )
                 ) : (
                   <div className="w-full h-48 bg-gray-200 animate-pulse" />

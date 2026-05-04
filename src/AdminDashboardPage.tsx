@@ -5,6 +5,13 @@ import { useJsApiLoader } from "@react-google-maps/api";
 import { collection, getDocs, orderBy, query, doc, getDoc, updateDoc, addDoc, where, writeBatch, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import chargedropsLogo from "/chargedrop_logo.svg";
+import {
+  NO_VENUE_PHOTO_URL,
+  type PlacePhotoPreview,
+  fetchPlaceById,
+  getPhotoPreviews,
+  getVenueFallbackPhotoUrl,
+} from "./googlePlaces";
 
 type City = {
   id: string;
@@ -31,7 +38,7 @@ type Venue = {
   place_id?: string; // Add Google Place ID
   stationDetails?: VenueStation[];
   citySlug?: string; // Add citySlug to group venues by city
-  photoUrl: string;
+  photoUrl?: string;
 }
 
 // Type for a single station
@@ -49,7 +56,27 @@ type PlaceSearchResult = {
   formatted_address: string;
 };
 
-
+type SelectedPlaceDetails = {
+  place_id: string;
+  venueName: string;
+  address: string;
+  citySlug: string;
+  phone: string;
+  website: string;
+  photos: PlacePhotoPreview[];
+  rating: number;
+  user_ratings_total: number;
+  reviews: google.maps.places.Review[];
+  editorial_summary: string;
+  opening_hours_text: string[];
+  googleMapsUrl: string;
+  openNow?: boolean;
+  lat: number;
+  lng: number;
+  active: boolean;
+  sortOrder: number;
+  stationDetails: VenueStation[];
+};
 
 const LogoutIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
@@ -100,23 +127,30 @@ const StarRating: React.FC<{ rating: number; reviewCount: number }> = ({ rating,
 };
 
 const VenueImage: React.FC<{ placeId: string; venueName: string; className: string; isLoaded: boolean }> = ({ placeId, venueName, className, isLoaded }) => {
-  const [imageUrl, setImageUrl] = useState<string>('https://via.placeholder.com/400x240?text=Loading...');
+  const [imageUrl, setImageUrl] = useState<string>(NO_VENUE_PHOTO_URL);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (isLoaded && placeId) {
-      const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
-      placesService.getDetails({ placeId: placeId, fields: ['photos'] }, (details, status) => {
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && details?.photos?.[0]) {
-          const photoUrl = details.photos[0].getUrl({ maxWidth: 400 });
-          setImageUrl(photoUrl);
-        } else {
-          console.error(`Failed to fetch photo for placeId ${placeId}: ${status}`);
-          setImageUrl('https://via.placeholder.com/400x240?text=No+Image');
-        }
-      });
-    } else if (!placeId) {
-        setImageUrl('https://via.placeholder.com/400x240?text=No+Place+ID');
+      fetchPlaceById(placeId, ["photos"])
+        .then((place) => {
+          if (cancelled) return;
+          const [photo] = getPhotoPreviews(place.photos, 400, 1);
+          setImageUrl(photo?.url ?? NO_VENUE_PHOTO_URL);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.error(`Failed to fetch photo for placeId ${placeId}:`, error);
+          setImageUrl(NO_VENUE_PHOTO_URL);
+        });
+    } else {
+      setImageUrl(NO_VENUE_PHOTO_URL);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [isLoaded, placeId]);
 
   return <img src={imageUrl} alt={venueName} className={className} />;
@@ -319,16 +353,24 @@ const AddCityView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBa
     return () => clearTimeout(handler);
   }, [searchQuery, isLoaded]);
 
-  const handleSelectCityFromSearch = (place: PlaceSearchResult) => {
-    const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
-    placesService.getDetails({ placeId: place.place_id, fields: ['name', 'geometry'] }, (details, status) => {
-      if (status === window.google.maps.places.PlacesServiceStatus.OK && details) {
-        setNewCity(prev => ({ ...prev, displayName: details.name || '' }));
-        setMapCenter({ lat: details.geometry?.location?.lat().toString() || '', lng: details.geometry?.location?.lng().toString() || '' });
-        setSearchResults([]);
-        setSearchQuery(details.name || '');
-      }
-    });
+  const handleSelectCityFromSearch = async (placeResult: PlaceSearchResult) => {
+    try {
+      const place = await fetchPlaceById(placeResult.place_id, [
+        "displayName",
+        "location",
+      ]);
+      const displayName = place.displayName || placeResult.name;
+
+      setNewCity(prev => ({ ...prev, displayName }));
+      setMapCenter({
+        lat: place.location?.lat().toString() || '',
+        lng: place.location?.lng().toString() || '',
+      });
+      setSearchResults([]);
+      setSearchQuery(displayName);
+    } catch (error) {
+      console.error("Failed to fetch city details", placeResult.place_id, error);
+    }
   };
 
   const handleMapCenterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -539,7 +581,7 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
                     {venue.place_id ? (
                       <VenueImage placeId={venue.place_id} venueName={venue.venueName} className="w-full h-32 object-cover" isLoaded={isLoaded} />
                     ) : (
-                      <img src={venue.photoUrl} alt={venue.venueName} className="w-full h-32 object-cover" />
+                      <img src={getVenueFallbackPhotoUrl(venue.photoUrl)} alt={venue.venueName} className="w-full h-32 object-cover" />
                     )}
                     <div className="p-3 flex-grow flex flex-col">
                       <h3 className="text-sm font-semibold truncate flex-grow">{venue.venueName}</h3>
@@ -784,11 +826,11 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
   // Venue search state
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
-  const [selectedPlace, setSelectedPlace] = useState<any | null>(null);
+  const [selectedPlace, setSelectedPlace] = useState<SelectedPlaceDetails | null>(null);
   const [saving, setSaving] = useState(false);
   const [stations, setStations] = useState<Station[]>([]);
   const [venueStations, setVenueStations] = useState<VenueStation[]>([{ stationId: '', stationLocation: '' }]);
-  const [status, setStatus] = useState<google.maps.places.PlacesServiceStatus | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUnassignedStations = async () => {
@@ -847,44 +889,55 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
     fetchCities();
   }, []);
 
-  const handleSelectPlace = (place: PlaceSearchResult) => {
+  const handleSelectPlace = async (placeResult: PlaceSearchResult) => {
     if (!isLoaded || !selectedCity) return;
 
-    const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
-    const fields = ['name', 'formatted_address', 'geometry', 'website', 'formatted_phone_number', 'photos', 'rating', 'reviews', 'opening_hours', 'url', 'user_ratings_total', 'editorial_summary'];
+    setStatus(null);
 
-    placesService.getDetails({ placeId: place.place_id, fields }, (details, status) => {
-      if (status === window.google.maps.places.PlacesServiceStatus.OK && details) {
-        // Cast to `any` to access properties not in the default type definitions
-        const placeDetails = details as any;
-        setSelectedPlace({
-          place_id: place.place_id, // Explicitly add the place_id
-          venueName: details.name || '',
-          address: details.formatted_address || '',
-          citySlug: selectedCity.slug, // Use the selected city's slug
-          phone: details.formatted_phone_number || '',
-          website: details.website || '',
-          photoUrl: details.photos?.[0]?.getUrl({ maxWidth: 800 }) || 'https://via.placeholder.com/400x240?text=No+Image',
-          photos: details.photos?.map(p => p.getUrl({ maxWidth: 800 })) || [],
-          rating: details.rating || 0,
-          user_ratings_total: details.user_ratings_total || 0, // This is correct
-          reviews: details.reviews || [],
-          editorial_summary: placeDetails.editorial_summary?.overview || '',
-          opening_hours_text: details.opening_hours?.weekday_text || [],
-          googleMapsUrl: details.url || '',
-          opening_hours: details.opening_hours,
-          lat: details.geometry?.location?.lat() || 0,
-          lng: details.geometry?.location?.lng() || 0,
-          active: true,
-          sortOrder: 100,
-          stationDetails: [], // Initialize with empty array
-        });
-        setSearchQuery("");
-        setSearchResults([]);
-      } else {
-        setStatus(status);
-      } // This is correct
-    });
+    try {
+      const place = await fetchPlaceById(placeResult.place_id, [
+        "displayName",
+        "formattedAddress",
+        "location",
+        "websiteURI",
+        "nationalPhoneNumber",
+        "photos",
+        "rating",
+        "reviews",
+        "regularOpeningHours",
+        "googleMapsURI",
+        "userRatingCount",
+        "editorialSummary",
+      ]);
+      const openNow = await place.isOpen().catch(() => undefined);
+
+      setSelectedPlace({
+        place_id: placeResult.place_id,
+        venueName: place.displayName || placeResult.name,
+        address: place.formattedAddress || placeResult.formatted_address || '',
+        citySlug: selectedCity.slug,
+        phone: place.nationalPhoneNumber || '',
+        website: place.websiteURI || '',
+        photos: getPhotoPreviews(place.photos, 800),
+        rating: place.rating || 0,
+        user_ratings_total: place.userRatingCount || 0,
+        reviews: place.reviews || [],
+        editorial_summary: place.editorialSummary || '',
+        opening_hours_text: place.regularOpeningHours?.weekdayDescriptions || [],
+        googleMapsUrl: place.googleMapsURI || '',
+        openNow,
+        lat: place.location?.lat() || 0,
+        lng: place.location?.lng() || 0,
+        active: true,
+        sortOrder: 100,
+        stationDetails: [],
+      });
+      setSearchQuery("");
+      setSearchResults([]);
+    } catch (error) {
+      console.error("Failed to fetch place details", placeResult.place_id, error);
+      setStatus("FAILED");
+    }
   };
 
   const handleSaveVenue = async () => {
@@ -907,8 +960,6 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
         citySlug: selectedPlace.citySlug,
         phone: selectedPlace.phone,
         website: selectedPlace.website,
-        photoUrl: selectedPlace.photoUrl,
-        photos: selectedPlace.photos,
         rating: selectedPlace.rating,
         user_ratings_total: selectedPlace.user_ratings_total,
         editorial_summary: selectedPlace.editorial_summary,
@@ -1022,9 +1073,9 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
           <p className="text-sm text-gray-500">{selectedPlace.address}</p>
           <div className="flex items-center gap-4">
             <StarRating rating={selectedPlace.rating} reviewCount={selectedPlace.user_ratings_total} />
-            {selectedPlace.opening_hours && (
-              <span className={`text-sm font-semibold ${selectedPlace.opening_hours.isOpen() ? 'text-green-600' : 'text-red-600'}`}>
-                {selectedPlace.opening_hours.isOpen() ? 'Open now' : 'Closed'}
+            {selectedPlace.openNow !== undefined && (
+              <span className={`text-sm font-semibold ${selectedPlace.openNow ? 'text-green-600' : 'text-red-600'}`}>
+                {selectedPlace.openNow ? 'Open now' : 'Closed'}
               </span>
             )}
           </div>
@@ -1038,9 +1089,9 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
             <div className="pt-4 border-t">
               <h3 className="font-semibold mb-2">Photo Gallery</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {selectedPlace.photos.map((photoUrl: string, index: number) => (
-                  <a href={photoUrl} key={index} target="_blank" rel="noreferrer">
-                    <img src={photoUrl} alt={`Venue photo ${index + 1}`} className="w-full h-24 object-cover rounded-md hover:opacity-90 transition" />
+                {selectedPlace.photos.map((photo, index) => (
+                  <a href={photo.url} key={index} target="_blank" rel="noreferrer">
+                    <img src={photo.url} alt={`Venue photo ${index + 1}`} className="w-full h-24 object-cover rounded-md hover:opacity-90 transition" />
                   </a>
                 ))}
               </div>
