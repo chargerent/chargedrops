@@ -73,6 +73,7 @@ type Venue = {
   totalChargersAvailable: number;
   totalSlotsFree: number;
   status: string;
+  comingSoon?: boolean;
   lat: number;
   lng: number;
   rating?: number;
@@ -240,6 +241,7 @@ const useVenues = (citySlug: string) => {
             totalChargersAvailable: Number(data.totalChargersAvailable ?? 0),
             totalSlotsFree: Number(data.totalSlotsFree ?? 0),
             status: data.status ?? "unknown",
+            comingSoon: data.comingSoon === true,
             lat: Number(data.lat ?? 0),
             lng: Number(data.lng ?? 0),
             rating: Number(data.rating ?? 0),
@@ -554,16 +556,20 @@ const PublicMapPage: React.FC = () => {
             alt="Chargedrops"
             className="hidden h-7 w-auto object-contain md:block"
           />
-          <div className="text-[11px] text-gray-500">Powered by</div>
-          {city?.sponsorLogoUrl ? (
-            <img
-              src={city.sponsorLogoUrl}
-              alt={city.sponsorName}
-              className="h-4 sm:h-5 w-auto object-contain"
-            />
-          ) : city?.sponsorName ? (
-            <span className="text-xs font-semibold text-gray-700">{city.sponsorName}</span>
-          ) : null}
+          {!rentalPricing && (
+            <>
+              <div className="text-[11px] text-gray-500">Powered by</div>
+              {city?.sponsorLogoUrl ? (
+                <img
+                  src={city.sponsorLogoUrl}
+                  alt={city.sponsorName}
+                  className="h-4 sm:h-5 w-auto object-contain"
+                />
+              ) : city?.sponsorName ? (
+                <span className="text-xs font-semibold text-gray-700">{city.sponsorName}</span>
+              ) : null}
+            </>
+          )}
         </div>
         {/* City Logo on the right */}
         <div className="relative">
@@ -691,6 +697,11 @@ const PublicMapPage: React.FC = () => {
                       alt={loc.venueName}
                       className="h-full w-full object-cover"
                     />
+                    {loc.comingSoon && (
+                      <span className="absolute left-1.5 top-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 shadow-sm">
+                        Coming soon
+                      </span>
+                    )}
                     <PhotoAttribution attributions={loc.photoAttributions} />
                   </div>
                   <div className="p-3 flex-1 flex justify-between items-start">
@@ -771,7 +782,14 @@ const PublicMapPage: React.FC = () => {
 
                 <div className="p-4 space-y-4">
                   <div>
-                    <h3 className="text-lg font-bold">{selectedVenue.venueName}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg font-bold">{selectedVenue.venueName}</h3>
+                      {selectedVenue.comingSoon && (
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                          Coming soon
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500 mt-1">{selectedVenue.address}</p>
                   </div>
 
@@ -913,7 +931,14 @@ const PublicMapPage: React.FC = () => {
 
                 <div className="p-4 space-y-4">
                   <div>
-                    <h3 className="text-lg font-bold">{selectedVenue.venueName}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg font-bold">{selectedVenue.venueName}</h3>
+                      {selectedVenue.comingSoon && (
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                          Coming soon
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500 mt-1">{selectedVenue.address}</p>
                   </div>
 

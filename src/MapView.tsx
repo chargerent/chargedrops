@@ -9,6 +9,7 @@ type Venue = {
   lng: number;
   totalChargersAvailable: number;
   totalSlotsFree: number;
+  comingSoon?: boolean;
 };
 
 type MapViewProps = {
@@ -106,8 +107,13 @@ const MapView: React.FC<MapViewProps> = ({
           >
             {/* The main panel */}
             <div className="flex flex-col items-center gap-1 bg-white rounded-lg shadow-lg px-3 py-1.5 border-2 border-transparent data-[selected=true]:border-blue-500">
-              <div className="text-xs font-bold text-gray-800 whitespace-nowrap">
-                {venue.venueName}
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="text-xs font-bold text-gray-800">{venue.venueName}</span>
+                {venue.comingSoon && (
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                    Coming soon
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 text-xs font-medium whitespace-nowrap">
                 <span className={`flex items-center gap-1 ${
