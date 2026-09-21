@@ -40,6 +40,12 @@ type FirestoreCity = {
   sponsorLogoUrl?: string;
   mapCenter?: { lat: number; lng: number };
   mapZoom?: number;
+  rentalPricing?: {
+    currency?: string;
+    hourlyRate: number;
+    nonReturnFee: number;
+    returnDeadlineHours: number;
+  };
 };
 
 type VenueStation = {
@@ -85,7 +91,20 @@ type City = {
   sponsorLogoUrl?: string;
   mapCenter: { lat: number; lng: number } | null;
   mapZoom: number;
+  rentalPricing: {
+    currency: string;
+    hourlyRate: number;
+    nonReturnFee: number;
+    returnDeadlineHours: number;
+  } | null;
 };
+
+const formatCurrency = (amount: number, currency: string) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  }).format(amount);
 
 const StarRating: React.FC<{ rating: number; reviewCount: number }> = ({ rating, reviewCount }) => {
   if (!rating || rating === 0) return null;
@@ -141,6 +160,18 @@ const useCity = (citySlug: string) => {
           typeof data.mapCenter.lng === "number"
             ? { lat: data.mapCenter.lat, lng: data.mapCenter.lng }
             : null;
+        const rentalPricing =
+          data.rentalPricing &&
+          typeof data.rentalPricing.hourlyRate === "number" &&
+          typeof data.rentalPricing.nonReturnFee === "number" &&
+          typeof data.rentalPricing.returnDeadlineHours === "number"
+            ? {
+                currency: data.rentalPricing.currency || "USD",
+                hourlyRate: data.rentalPricing.hourlyRate,
+                nonReturnFee: data.rentalPricing.nonReturnFee,
+                returnDeadlineHours: data.rentalPricing.returnDeadlineHours,
+              }
+            : null;
 
         setCity({
           slug: data.slug ?? citySlug,
@@ -150,6 +181,7 @@ const useCity = (citySlug: string) => {
           sponsorLogoUrl: data.sponsorLogoUrl ?? "",
           mapCenter,
           mapZoom: typeof data.mapZoom === "number" ? data.mapZoom : 13,
+          rentalPricing,
         });
       } catch (err) {
         console.error("Error loading city", err);
@@ -500,6 +532,10 @@ const PublicMapPage: React.FC = () => {
   }, [selectedVenue, isLoaded]);
 
   const anyLoading = loadingVenues || loadingCity || loadingStations || loadingPhotos;
+  const rentalPricing = city?.rentalPricing;
+  const returnDeadlineDays = rentalPricing
+    ? rentalPricing.returnDeadlineHours / 24
+    : null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -519,13 +555,15 @@ const PublicMapPage: React.FC = () => {
             className="hidden h-7 w-auto object-contain md:block"
           />
           <div className="text-[11px] text-gray-500">Powered by</div>
-          {city?.sponsorLogoUrl && (
+          {city?.sponsorLogoUrl ? (
             <img
               src={city.sponsorLogoUrl}
               alt={city.sponsorName}
               className="h-4 sm:h-5 w-auto object-contain"
             />
-          )}
+          ) : city?.sponsorName ? (
+            <span className="text-xs font-semibold text-gray-700">{city.sponsorName}</span>
+          ) : null}
         </div>
         {/* City Logo on the right */}
         <div className="relative">
@@ -576,7 +614,7 @@ const PublicMapPage: React.FC = () => {
           <div className="bg-white rounded-lg shadow-lg">
             <button onClick={() => setInstructionsExpanded(!instructionsExpanded)} className="w-full flex justify-between items-center text-left p-3">
               <h2 className="text-sm font-semibold">
-                How to Borrow a Charger
+                {rentalPricing ? "How to Rent a Charger" : "How to Borrow a Charger"}
               </h2>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-5 h-5 text-gray-400 transition-transform ${instructionsExpanded ? 'rotate-180' : ''}`}>
                 <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
@@ -585,8 +623,31 @@ const PublicMapPage: React.FC = () => {
             {instructionsExpanded && <div className="px-3 pb-3">
               <ol className="list-decimal list-inside text-xs text-gray-600 space-y-1">
                 <li>Find a location on the map and visit the station.</li>
-                <li>Scan the QR code to borrow the charger <span className="font-bold">free for 1 hour</span>.</li>
-                <li>Take your portable charger and return it to any location when done!</li>
+                {rentalPricing ? (
+                  <>
+                    <li>
+                      Scan the QR code to rent a portable charger for{" "}
+                      <span className="font-bold">
+                        {formatCurrency(rentalPricing.hourlyRate, rentalPricing.currency)} per hour
+                      </span>.
+                    </li>
+                    <li>
+                      Return it to any Charge Drops location within{" "}
+                      <span className="font-bold">
+                        {returnDeadlineDays} {returnDeadlineDays === 1 ? "day" : "days"}
+                      </span>. A{" "}
+                      <span className="font-bold">
+                        {formatCurrency(rentalPricing.nonReturnFee, rentalPricing.currency)} charge
+                      </span>{" "}
+                      applies if it is not returned within that time.
+                    </li>
+                  </>
+                ) : (
+                  <>
+                    <li>Scan the QR code to borrow the charger <span className="font-bold">free for 1 hour</span>.</li>
+                    <li>Take your portable charger and return it to any location when done!</li>
+                  </>
+                )}
               </ol>
             </div>}
           </div>
