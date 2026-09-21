@@ -535,9 +535,6 @@ const PublicMapPage: React.FC = () => {
 
   const anyLoading = loadingVenues || loadingCity || loadingStations || loadingPhotos;
   const rentalPricing = city?.rentalPricing;
-  const returnDeadlineDays = rentalPricing
-    ? rentalPricing.returnDeadlineHours / 24
-    : null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -638,12 +635,7 @@ const PublicMapPage: React.FC = () => {
                         {formatCurrency(rentalPricing.nonReturnFee, rentalPricing.currency)}
                       </span>.
                     </li>
-                    <li>
-                      Return it to any Charge Drops location within{" "}
-                      <span className="font-bold">
-                        {returnDeadlineDays} {returnDeadlineDays === 1 ? "day" : "days"}
-                      </span>.
-                    </li>
+                    <li>Return it to any Charge Drops location.</li>
                   </>
                 ) : (
                   <>
