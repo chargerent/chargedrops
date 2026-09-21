@@ -19,9 +19,9 @@ const AdminLoginPage: React.FC = () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       navigate("/admin"); // Redirect to admin dashboard on success
-    } catch (err: any) {
+    } catch (error: unknown) {
       setError("Failed to log in. Please check your email and password.");
-      console.error(err);
+      console.error(error);
     } finally {
       setLoading(false);
     }

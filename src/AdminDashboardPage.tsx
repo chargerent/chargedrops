@@ -41,6 +41,11 @@ type Venue = {
   photoUrl?: string;
 }
 
+type VenueWithLiveCounts = Venue & {
+  totalChargersAvailable: number;
+  totalSlotsFree: number;
+};
+
 // Type for a single station
 type Station = {
   id: string;
@@ -144,8 +149,6 @@ const VenueImage: React.FC<{ placeId: string; venueName: string; className: stri
           console.error(`Failed to fetch photo for placeId ${placeId}:`, error);
           setImageUrl(NO_VENUE_PHOTO_URL);
         });
-    } else {
-      setImageUrl(NO_VENUE_PHOTO_URL);
     }
 
     return () => {
@@ -153,7 +156,8 @@ const VenueImage: React.FC<{ placeId: string; venueName: string; className: stri
     };
   }, [isLoaded, placeId]);
 
-  return <img src={imageUrl} alt={venueName} className={className} />;
+  const displayedImageUrl = isLoaded && placeId ? imageUrl : NO_VENUE_PHOTO_URL;
+  return <img src={displayedImageUrl} alt={venueName} className={className} />;
 };
 
 const ManageCitiesView: React.FC<{ onBack: () => void; onSelectCity: (id: string) => void; onAddCity: () => void; }> = ({ onBack, onSelectCity, onAddCity }) => {
@@ -238,7 +242,8 @@ const EditCityView: React.FC<{ cityId: string; onBack: () => void }> = ({ cityId
     setSaving(true);
     const cityRef = doc(db, "cities", city.id);
     // Exclude 'id' from the data being saved to Firestore
-    const { id, ...dataToSave } = city;
+    const dataToSave: Partial<FullCityData> = { ...city };
+    delete dataToSave.id;
     try {
       await updateDoc(cityRef, dataToSave);
       alert("City updated successfully!");
@@ -311,7 +316,7 @@ const AddCityView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBa
     logoUrl: "",
     sponsorLogoUrl: "",
   });
-  
+
   // State for city search
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<PlaceSearchResult[]>([]);
@@ -560,7 +565,7 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
       }
       acc[citySlug].push(venue);
       return acc;
-    }, {} as Record<string, Venue[]>);
+    }, {} as Record<string, VenueWithLiveCounts[]>);
   }, [venuesWithLiveCounts]);
 
   return (
@@ -576,7 +581,7 @@ const ManageVenuesView: React.FC<{ onBack: () => void; onAddVenue: () => void; o
             <div key={citySlug}>
               <h2 className="text-xl font-bold mb-4 border-b pb-2">{city?.displayName || 'Unassigned Venues'}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {groupedVenues[citySlug].map((venue: any) => ( // Use the enriched venue object
+                {groupedVenues[citySlug].map((venue) => (
                   <div key={venue.id} onClick={() => onSelectVenue(venue.id)} className="bg-white rounded-lg shadow-sm overflow-hidden cursor-pointer transition hover:shadow-md flex flex-col">
                     {venue.place_id ? (
                       <VenueImage placeId={venue.place_id} venueName={venue.venueName} className="w-full h-32 object-cover" isLoaded={isLoaded} />
@@ -713,7 +718,8 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
 
       // Update the venue document
       const venueData = { ...venue, stationDetails: venueStations.filter(vs => vs.stationId) }; // We no longer save totals here
-      const { id, ...dataToSave } = venueData; // Use destructuring to exclude 'id'
+      const dataToSave: Partial<typeof venueData> = { ...venueData };
+      delete dataToSave.id;
       batch.update(venueRef, dataToSave);
 
       await batch.commit();
@@ -756,7 +762,7 @@ const EditVenueView: React.FC<{ venueId: string; onBack: () => void }> = ({ venu
           <label className="block text-sm font-medium text-gray-700">Venue Name</label>
           <input type="text" name="venueName" value={venue.venueName} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
-        
+
         <div className="grid grid-cols-2 gap-4 pt-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">Total Chargers</label>
@@ -1084,7 +1090,7 @@ const AddVenueView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onB
             {selectedPlace.website && <a href={selectedPlace.website} target="_blank" rel="noreferrer" className="bg-gray-100 px-3 py-1 rounded-full hover:bg-gray-200">Visit Website</a>}
             {selectedPlace.phone && <a href={`tel:${selectedPlace.phone}`} className="bg-gray-100 px-3 py-1 rounded-full hover:bg-gray-200">Call</a>}
           </div>
-          
+
           {selectedPlace.photos?.length > 0 && (
             <div className="pt-4 border-t">
               <h3 className="font-semibold mb-2">Photo Gallery</h3>
@@ -1156,7 +1162,6 @@ const AdminDashboardPage: React.FC = () => {
     id: "google-map-script-admin", // Use a unique ID
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
     libraries: placesLibraries,
-    nonce: (window as any).cspNonce, // This nonce must be passed from the server.
   });
 
   // Check authentication status on component mount

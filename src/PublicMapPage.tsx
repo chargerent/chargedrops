@@ -337,12 +337,16 @@ const PublicMapPage: React.FC = () => {
 
     if (!isLoaded || venues.length === 0) {
       if (!loadingVenues) {
-        setLoadingPhotos(false);
+        queueMicrotask(() => {
+          if (!cancelled) setLoadingPhotos(false);
+        });
       }
       return;
     }
 
-    setLoadingPhotos(true);
+    queueMicrotask(() => {
+      if (!cancelled) setLoadingPhotos(true);
+    });
 
     const photoPromises = venues.map(async (venue) => {
       if (!venue.place_id) {
@@ -396,7 +400,7 @@ const PublicMapPage: React.FC = () => {
   const venuesWithLiveCounts = useMemo(() => {
     if (loadingVenues || loadingStations || loadingPhotos) return [];
 
-    const stationsMap = stations.reduce((acc, station) => { 
+    const stationsMap = stations.reduce((acc, station) => {
       acc[station.id] = station;
       return acc;
     }, {} as Record<string, Station>);
@@ -427,10 +431,12 @@ const PublicMapPage: React.FC = () => {
     let cancelled = false;
 
     if (selectedVenue && selectedVenue.place_id && isLoaded) {
-      setLoadingLive(true);
-      // Clear previous photos to prevent showing stale images
-      setLivePhotos([]);
-      setMainPhoto(null);
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setLoadingLive(true);
+        setLivePhotos([]);
+        setMainPhoto(null);
+      });
 
       fetchPlaceById(selectedVenue.place_id, [
         "photos",
@@ -473,16 +479,19 @@ const PublicMapPage: React.FC = () => {
           }
         });
     } else {
-      setLiveVenueData(null);
-      setLivePhotos([]);
-      if (selectedVenue) {
-        setMainPhoto({
-          url: getVenueFallbackPhotoUrl(selectedVenue.photoUrl),
-          attributions: selectedVenue.photoAttributions ?? [],
-        });
-      } else {
-        setMainPhoto(null);
-      }
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setLiveVenueData(null);
+        setLivePhotos([]);
+        if (selectedVenue) {
+          setMainPhoto({
+            url: getVenueFallbackPhotoUrl(selectedVenue.photoUrl),
+            attributions: selectedVenue.photoAttributions ?? [],
+          });
+        } else {
+          setMainPhoto(null);
+        }
+      });
     }
 
     return () => {
@@ -586,7 +595,7 @@ const PublicMapPage: React.FC = () => {
         {/* Floating panel for locations */}
         {/* On mobile, it's a bottom sheet. On desktop, a left sidebar. */}
         <section className="hidden md:block absolute top-0 bottom-0 left-0 z-10 md:w-96 lg:w-1/3 bg-gray-50">
-          {/* Location list container - shown only if no venue is selected on desktop */} 
+          {/* Location list container - shown only if no venue is selected on desktop */}
           <div className={`p-3 flex-col gap-3 overflow-y-auto h-full ${selectedId ? 'hidden' : 'flex'}`} data-testid="venue-list">
             {anyLoading && !venues.length && (
               <div className="text-xs text-gray-500">
@@ -704,7 +713,7 @@ const PublicMapPage: React.FC = () => {
                     <h3 className="text-lg font-bold">{selectedVenue.venueName}</h3>
                     <p className="text-sm text-gray-500 mt-1">{selectedVenue.address}</p>
                   </div>
-                  
+
                   {selectedVenue.stationDetails && selectedVenue.stationDetails.length > 0 && (
                     <div className="pt-3 border-t border-gray-100">
                       <h4 className="text-sm font-bold mb-2">Station Locations</h4>
@@ -734,7 +743,7 @@ const PublicMapPage: React.FC = () => {
                     ) : (
                       <div className="h-7 w-20"></div> // Placeholder
                     )}
-                    
+
                     <StarRating rating={liveVenueData?.rating ?? selectedVenue.rating ?? 0} reviewCount={liveVenueData?.user_ratings_total ?? selectedVenue.user_ratings_total ?? 0} />
                   </div>
 
@@ -800,8 +809,8 @@ const PublicMapPage: React.FC = () => {
         {selectedVenue && (
           <div className={`fixed inset-0 z-20 md:hidden transition-transform duration-300 ease-in-out ${selectedId ? 'translate-y-0' : 'translate-y-full'}`}>
             <div className="bg-white h-full w-full overflow-y-auto">
-              <button 
-                onClick={() => setSelectedId(null)} 
+              <button
+                onClick={() => setSelectedId(null)}
                 className="absolute top-4 right-4 z-30 bg-gray-200 rounded-full p-1"
                 aria-label="Close venue details"
               >
@@ -809,7 +818,7 @@ const PublicMapPage: React.FC = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
-              
+
               {/* Re-using the article content structure */}
               <article className="bg-white overflow-hidden">
                 {mainPhoto ? (
@@ -876,7 +885,7 @@ const PublicMapPage: React.FC = () => {
                     ) : (
                       <div className="h-7 w-20"></div> // Placeholder
                     )}
-                    
+
                     <StarRating rating={liveVenueData?.rating ?? selectedVenue.rating ?? 0} reviewCount={liveVenueData?.user_ratings_total ?? selectedVenue.user_ratings_total ?? 0} />
                   </div>
 
