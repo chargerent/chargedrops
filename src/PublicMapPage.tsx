@@ -634,18 +634,15 @@ const PublicMapPage: React.FC = () => {
                     <li>
                       Scan the QR code to rent a portable charger for{" "}
                       <span className="font-bold">
-                        {formatCurrency(rentalPricing.hourlyRate, rentalPricing.currency)} per hour
+                        {formatCurrency(rentalPricing.hourlyRate, rentalPricing.currency)} per hour up to{" "}
+                        {formatCurrency(rentalPricing.nonReturnFee, rentalPricing.currency)}
                       </span>.
                     </li>
                     <li>
                       Return it to any Charge Drops location within{" "}
                       <span className="font-bold">
                         {returnDeadlineDays} {returnDeadlineDays === 1 ? "day" : "days"}
-                      </span>. A{" "}
-                      <span className="font-bold">
-                        {formatCurrency(rentalPricing.nonReturnFee, rentalPricing.currency)} charge
-                      </span>{" "}
-                      applies if it is not returned within that time.
+                      </span>.
                     </li>
                   </>
                 ) : (
