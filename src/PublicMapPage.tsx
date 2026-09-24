@@ -12,6 +12,11 @@ import {
 import { db } from "./firebase";
 import { MdDirections, MdPhone, MdLanguage } from "react-icons/md";
 import MapView from "./MapView";
+import {
+  normalizeRentalPricing,
+  STANDARD_RENTAL_PRICING,
+  type RentalPricing,
+} from "./cityConfig";
 import chargedropsLogo from "/chargedrop_logo.svg"; // large logo
 import dropLogo from "/drop_logo.svg"; // small logo
 import {
@@ -40,12 +45,8 @@ type FirestoreCity = {
   sponsorLogoUrl?: string;
   mapCenter?: { lat: number; lng: number };
   mapZoom?: number;
-  rentalPricing?: {
-    currency?: string;
-    hourlyRate: number;
-    nonReturnFee: number;
-    returnDeadlineHours: number;
-  };
+  locale?: string;
+  rentalPricing?: Partial<RentalPricing>;
 };
 
 type VenueStation = {
@@ -92,20 +93,85 @@ type City = {
   sponsorLogoUrl?: string;
   mapCenter: { lat: number; lng: number } | null;
   mapZoom: number;
-  rentalPricing: {
-    currency: string;
-    hourlyRate: number;
-    nonReturnFee: number;
-    returnDeadlineHours: number;
-  } | null;
+  locale: string;
+  rentalPricing: RentalPricing;
 };
 
-const formatCurrency = (amount: number, currency: string) =>
-  new Intl.NumberFormat("en-US", {
+const formatCurrency = (amount: number, currency: string, locale: string) =>
+  new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
   }).format(amount);
+
+const COPY = {
+  en: {
+    poweredBy: "Powered by",
+    rentTitle: "How to Rent a Charger",
+    borrowTitle: "How to Borrow a Charger",
+    findLocation: "Find a location on the map and visit the station.",
+    scanToRent: "Scan the QR code to rent a portable charger for",
+    perHourUpTo: "per hour up to",
+    returnRental: "Return it to any Chargedrops location.",
+    scanToBorrow: "Scan the QR code to borrow the charger",
+    freeForOneHour: "free for 1 hour",
+    returnBorrowed: "Take your portable charger and return it to any location when done!",
+    loadingLocations: "Loading city and locations…",
+    cityLoadError: "Unable to load the city configuration.",
+    locationLoadError: "Unable to load locations.",
+    noLocations: "No locations found for this city yet.",
+    comingSoon: "Coming soon",
+    charger: "charger",
+    chargers: "chargers",
+    slots: "slots",
+    backToLocations: "Back to all locations",
+    stationLocations: "Station Locations",
+    openNow: "Open now",
+    closed: "Closed",
+    availability: "Availability",
+    about: "About",
+    hours: "Hours",
+    directions: "Directions",
+    call: "Call",
+    website: "Website",
+    closeDetails: "Close venue details",
+    thumbnail: "Thumbnail",
+    loadingMap: "Loading map…",
+  },
+  fr: {
+    poweredBy: "Avec le soutien de",
+    rentTitle: "Comment louer une batterie externe",
+    borrowTitle: "Comment emprunter une batterie externe",
+    findLocation: "Trouvez un emplacement sur la carte et rendez-vous à la station.",
+    scanToRent: "Scannez le code QR pour louer une batterie externe à",
+    perHourUpTo: "par heure, jusqu’à",
+    returnRental: "Rapportez-la dans n’importe quel point Chargedrops.",
+    scanToBorrow: "Scannez le code QR pour emprunter la batterie externe",
+    freeForOneHour: "gratuitement pendant 1 heure",
+    returnBorrowed: "Utilisez votre batterie externe, puis rapportez-la dans n’importe quel point Chargedrops.",
+    loadingLocations: "Chargement de la ville et des emplacements…",
+    cityLoadError: "Impossible de charger la configuration de la ville.",
+    locationLoadError: "Impossible de charger les emplacements.",
+    noLocations: "Aucun emplacement n’est encore disponible dans cette ville.",
+    comingSoon: "Bientôt disponible",
+    charger: "batterie",
+    chargers: "batteries",
+    slots: "emplacements libres",
+    backToLocations: "Retour à tous les emplacements",
+    stationLocations: "Emplacements des stations",
+    openNow: "Ouvert maintenant",
+    closed: "Fermé",
+    availability: "Disponibilité",
+    about: "À propos",
+    hours: "Horaires",
+    directions: "Itinéraire",
+    call: "Appeler",
+    website: "Site web",
+    closeDetails: "Fermer les détails de l’établissement",
+    thumbnail: "Aperçu",
+    loadingMap: "Chargement de la carte…",
+  },
+} as const;
 
 const StarRating: React.FC<{ rating: number; reviewCount: number }> = ({ rating, reviewCount }) => {
   if (!rating || rating === 0) return null;
@@ -161,18 +227,7 @@ const useCity = (citySlug: string) => {
           typeof data.mapCenter.lng === "number"
             ? { lat: data.mapCenter.lat, lng: data.mapCenter.lng }
             : null;
-        const rentalPricing =
-          data.rentalPricing &&
-          typeof data.rentalPricing.hourlyRate === "number" &&
-          typeof data.rentalPricing.nonReturnFee === "number" &&
-          typeof data.rentalPricing.returnDeadlineHours === "number"
-            ? {
-                currency: data.rentalPricing.currency || "USD",
-                hourlyRate: data.rentalPricing.hourlyRate,
-                nonReturnFee: data.rentalPricing.nonReturnFee,
-                returnDeadlineHours: data.rentalPricing.returnDeadlineHours,
-              }
-            : null;
+        const rentalPricing = normalizeRentalPricing(data.rentalPricing);
 
         setCity({
           slug: data.slug ?? citySlug,
@@ -182,6 +237,7 @@ const useCity = (citySlug: string) => {
           sponsorLogoUrl: data.sponsorLogoUrl ?? "",
           mapCenter,
           mapZoom: typeof data.mapZoom === "number" ? data.mapZoom : 13,
+          locale: data.locale || "en-US",
           rentalPricing,
         });
       } catch (err) {
@@ -323,6 +379,7 @@ const PublicMapPage: React.FC = () => {
   const params = useParams();
   const citySlug = params.citySlug || "demo-city"; // Use slug from URL or fallback
   const navigate = useNavigate();
+  const routeIsFrench = citySlug === "paris";
 
   const { city, loading: loadingCity, error: cityError } = useCity(citySlug);
   const {
@@ -362,6 +419,8 @@ const PublicMapPage: React.FC = () => {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script-public",
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+    language: routeIsFrench ? "fr" : "en",
+    region: routeIsFrench ? "FR" : "US",
     libraries,
   });
 
@@ -534,10 +593,13 @@ const PublicMapPage: React.FC = () => {
   }, [selectedVenue, isLoaded]);
 
   const anyLoading = loadingVenues || loadingCity || loadingStations || loadingPhotos;
-  const rentalPricing = city?.rentalPricing;
+  const rentalPricing = city?.rentalPricing ?? STANDARD_RENTAL_PRICING;
+  const locale = city?.locale || (routeIsFrench ? "fr-FR" : "en-US");
+  const isFrench = locale.toLowerCase().startsWith("fr");
+  const copy = isFrench ? COPY.fr : COPY.en;
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col" lang={isFrench ? "fr" : "en"}>
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b bg-white">
         <div className="flex items-center gap-3">
@@ -555,7 +617,7 @@ const PublicMapPage: React.FC = () => {
           />
           {!rentalPricing && (
             <>
-              <div className="text-[11px] text-gray-500">Powered by</div>
+              <div className="text-[11px] text-gray-500">{copy.poweredBy}</div>
               {city?.sponsorLogoUrl ? (
                 <img
                   src={city.sponsorLogoUrl}
@@ -617,7 +679,7 @@ const PublicMapPage: React.FC = () => {
           <div className="bg-white rounded-lg shadow-lg">
             <button onClick={() => setInstructionsExpanded(!instructionsExpanded)} className="w-full flex justify-between items-center text-left p-3">
               <h2 className="text-sm font-semibold">
-                {rentalPricing ? "How to Rent a Charger" : "How to Borrow a Charger"}
+                {rentalPricing ? copy.rentTitle : copy.borrowTitle}
               </h2>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-5 h-5 text-gray-400 transition-transform ${instructionsExpanded ? 'rotate-180' : ''}`}>
                 <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
@@ -625,22 +687,22 @@ const PublicMapPage: React.FC = () => {
             </button>
             {instructionsExpanded && <div className="px-3 pb-3">
               <ol className="list-decimal list-inside text-xs text-gray-600 space-y-1">
-                <li>Find a location on the map and visit the station.</li>
+                <li>{copy.findLocation}</li>
                 {rentalPricing ? (
                   <>
                     <li>
-                      Scan the QR code to rent a portable charger for{" "}
+                      {copy.scanToRent}{" "}
                       <span className="font-bold">
-                        {formatCurrency(rentalPricing.hourlyRate, rentalPricing.currency)} per hour up to{" "}
-                        {formatCurrency(rentalPricing.nonReturnFee, rentalPricing.currency)}
-                      </span>.
+                        {formatCurrency(rentalPricing.hourlyRate, rentalPricing.currency, locale)} {copy.perHourUpTo}{" "}
+                        {formatCurrency(rentalPricing.nonReturnFee, rentalPricing.currency, locale)}.
+                      </span>
                     </li>
-                    <li>Return it to any Charge Drops location.</li>
+                    <li>{copy.returnRental}</li>
                   </>
                 ) : (
                   <>
-                    <li>Scan the QR code to borrow the charger <span className="font-bold">free for 1 hour</span>.</li>
-                    <li>Take your portable charger and return it to any location when done!</li>
+                    <li>{copy.scanToBorrow} <span className="font-bold">{copy.freeForOneHour}.</span></li>
+                    <li>{copy.returnBorrowed}</li>
                   </>
                 )}
               </ol>
@@ -655,21 +717,21 @@ const PublicMapPage: React.FC = () => {
           <div className={`p-3 flex-col gap-3 overflow-y-auto h-full ${selectedId ? 'hidden' : 'flex'}`} data-testid="venue-list">
             {anyLoading && !venues.length && (
               <div className="text-xs text-gray-500">
-                Loading city and locations…
+                {copy.loadingLocations}
               </div>
             )}
 
             {cityError && !anyLoading && (
-              <div className="text-xs text-red-600">{cityError}</div>
+              <div className="text-xs text-red-600">{copy.cityLoadError}</div>
             )}
 
             {(venueError || stationError) && !anyLoading && (
-              <div className="text-xs text-red-600">{venueError || stationError}</div>
+              <div className="text-xs text-red-600">{copy.locationLoadError}</div>
             )}
 
             {!anyLoading && !venueError && !stationError && venuesWithLiveCounts.length === 0 && (
               <div className="text-xs text-gray-500">
-                No locations found for this city yet.
+                {copy.noLocations}
               </div>
             )}
 
@@ -688,7 +750,7 @@ const PublicMapPage: React.FC = () => {
                     />
                     {loc.comingSoon && (
                       <span className="absolute left-1.5 top-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 shadow-sm">
-                        Coming soon
+                        {copy.comingSoon}
                       </span>
                     )}
                     <PhotoAttribution attributions={loc.photoAttributions} />
@@ -715,14 +777,14 @@ const PublicMapPage: React.FC = () => {
                           ? 'bg-red-50 text-red-700'
                           : 'bg-blue-50 text-blue-700'
                       }`}>
-                        <img src={dropLogo} alt="charger" className="h-3 w-3" />
-                        {loc.totalChargersAvailable} charger{loc.totalChargersAvailable === 1 ? '' : 's'}
+                        <img src={dropLogo} alt={copy.charger} className="h-3 w-3" />
+                        {loc.totalChargersAvailable} {loc.totalChargersAvailable === 1 ? copy.charger : copy.chargers}
                       </span>
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full font-medium text-xs whitespace-nowrap ${
                         loc.totalSlotsFree === 0
                           ? 'bg-red-50 text-red-700'
                           : 'bg-gray-100 text-gray-700'
-                      }`}>{loc.totalSlotsFree} slots</span>
+                      }`}>{loc.totalSlotsFree} {copy.slots}</span>
                     </div>
                   </div>
                 </div>
@@ -737,7 +799,7 @@ const PublicMapPage: React.FC = () => {
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-gray-600">
                   <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
                 </svg>
-                <span className="text-sm font-semibold">Back to all locations</span>
+                <span className="text-sm font-semibold">{copy.backToLocations}</span>
               </button>
               <article className="bg-white overflow-hidden">
                 {mainPhoto ? (
@@ -755,7 +817,7 @@ const PublicMapPage: React.FC = () => {
                     </div>
                     {livePhotos.slice(0, 4).map((photo, index) => (
                       <div key={index} className="col-span-1">
-                        <img src={photo.url} alt={`Thumb ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
+                        <img src={photo.url} alt={`${copy.thumbnail} ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
                       </div>
                     ))}
                   </div>
@@ -775,7 +837,7 @@ const PublicMapPage: React.FC = () => {
                       <h3 className="text-lg font-bold">{selectedVenue.venueName}</h3>
                       {selectedVenue.comingSoon && (
                         <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                          Coming soon
+                          {copy.comingSoon}
                         </span>
                       )}
                     </div>
@@ -784,7 +846,7 @@ const PublicMapPage: React.FC = () => {
 
                   {selectedVenue.stationDetails && selectedVenue.stationDetails.length > 0 && (
                     <div className="pt-3 border-t border-gray-100">
-                      <h4 className="text-sm font-bold mb-2">Station Locations</h4>
+                      <h4 className="text-sm font-bold mb-2">{copy.stationLocations}</h4>
                       <ul className="space-y-2 text-sm">
                         {selectedVenue.stationDetails.map((station, index) => (
                           <li key={index} className="flex items-center gap-2 text-gray-600">
@@ -801,11 +863,11 @@ const PublicMapPage: React.FC = () => {
                     ) : liveVenueData?.open_now !== undefined ? (
                       liveVenueData.open_now ? (
                         <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 font-medium text-green-700">
-                          Open now
+                          {copy.openNow}
                         </span>
                       ) : (
                         <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 font-medium text-red-700">
-                          Closed
+                          {copy.closed}
                         </span>
                       )
                     ) : (
@@ -816,27 +878,27 @@ const PublicMapPage: React.FC = () => {
                   </div>
 
                   <div className="flex justify-between items-center">
-                    <h4 className="text-sm font-bold">Availability</h4>
+                    <h4 className="text-sm font-bold">{copy.availability}</h4>
                     <div className="flex items-center gap-2 text-sm">
                       <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium ${
                         selectedVenue.totalChargersAvailable === 0
                           ? 'bg-red-50 text-red-700'
                           : 'bg-blue-50 text-blue-700'
                       }`}>
-                        <img src={dropLogo} alt="charger" className="h-4 w-4" />
-                        {selectedVenue.totalChargersAvailable} charger{selectedVenue.totalChargersAvailable === 1 ? '' : 's'}
+                        <img src={dropLogo} alt={copy.charger} className="h-4 w-4" />
+                        {selectedVenue.totalChargersAvailable} {selectedVenue.totalChargersAvailable === 1 ? copy.charger : copy.chargers}
                       </span>
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full font-medium whitespace-nowrap ${
                         selectedVenue.totalSlotsFree === 0
                           ? 'bg-red-50 text-red-700'
                           : 'bg-gray-100 text-gray-700'
-                      }`}>{selectedVenue.totalSlotsFree} slots</span>
+                      }`}>{selectedVenue.totalSlotsFree} {copy.slots}</span>
                     </div>
                   </div>
 
                   {selectedVenue.editorial_summary && (
                     <div>
-                      <h4 className="text-sm font-bold mb-1">About</h4>
+                      <h4 className="text-sm font-bold mb-1">{copy.about}</h4>
                       <p className="text-sm text-gray-600 leading-relaxed">{selectedVenue.editorial_summary}</p>
                     </div>
                   )}
@@ -844,7 +906,7 @@ const PublicMapPage: React.FC = () => {
                   {selectedVenue.opening_hours_text && selectedVenue.opening_hours_text.length > 0 && (
                     <div>
                       <button onClick={() => setHoursExpanded(!hoursExpanded)} className="w-full flex justify-between items-center text-left">
-                        <h4 className="text-sm font-bold">Hours</h4>
+                        <h4 className="text-sm font-bold">{copy.hours}</h4>
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-5 h-5 text-gray-400 transition-transform ${hoursExpanded ? 'rotate-180' : ''}`}>
                           <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
                         </svg>
@@ -863,9 +925,9 @@ const PublicMapPage: React.FC = () => {
                   )}
 
                   <div className="flex justify-around items-center pt-3 border-t">
-                    <ActionButton href={`https://www.google.com/maps/dir/?api=1&destination=${selectedVenue.lat},${selectedVenue.lng}`} label="Directions" icon={<MdDirections className="w-6 h-6" />} />
-                    {selectedVenue.phone && <ActionButton href={`tel:${selectedVenue.phone}`} label="Call" icon={<MdPhone className="w-6 h-6" />} />}
-                    {selectedVenue.website && <ActionButton href={selectedVenue.website} label="Website" icon={<MdLanguage className="w-6 h-6" />} />}
+                    <ActionButton href={`https://www.google.com/maps/dir/?api=1&destination=${selectedVenue.lat},${selectedVenue.lng}`} label={copy.directions} icon={<MdDirections className="w-6 h-6" />} />
+                    {selectedVenue.phone && <ActionButton href={`tel:${selectedVenue.phone}`} label={copy.call} icon={<MdPhone className="w-6 h-6" />} />}
+                    {selectedVenue.website && <ActionButton href={selectedVenue.website} label={copy.website} icon={<MdLanguage className="w-6 h-6" />} />}
                   </div>
                 </div>
               </article>
@@ -880,7 +942,7 @@ const PublicMapPage: React.FC = () => {
               <button
                 onClick={() => setSelectedId(null)}
                 className="absolute top-4 right-4 z-30 bg-gray-200 rounded-full p-1"
-                aria-label="Close venue details"
+                aria-label={copy.closeDetails}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -904,7 +966,7 @@ const PublicMapPage: React.FC = () => {
                       </div>
                       {livePhotos.slice(0, 4).map((photo, index) => (
                         <div key={index} className="col-span-1">
-                          <img src={photo.url} alt={`Thumb ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
+                          <img src={photo.url} alt={`${copy.thumbnail} ${index + 1}`} onClick={(e) => { e.stopPropagation(); setMainPhoto(photo); }} className="h-16 w-full object-cover rounded-md cursor-pointer" />
                         </div>
                       ))}
                     </div>
@@ -924,7 +986,7 @@ const PublicMapPage: React.FC = () => {
                       <h3 className="text-lg font-bold">{selectedVenue.venueName}</h3>
                       {selectedVenue.comingSoon && (
                         <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                          Coming soon
+                          {copy.comingSoon}
                         </span>
                       )}
                     </div>
@@ -933,7 +995,7 @@ const PublicMapPage: React.FC = () => {
 
                   {selectedVenue.stationDetails && selectedVenue.stationDetails.length > 0 && (
                     <div className="pt-3 border-t border-gray-100">
-                      <h4 className="text-sm font-bold mb-2">Station Locations</h4>
+                      <h4 className="text-sm font-bold mb-2">{copy.stationLocations}</h4>
                       <ul className="space-y-2 text-sm">
                         {selectedVenue.stationDetails.map((station, index) => (
                           <li key={index} className="flex items-center gap-2 text-gray-600">
@@ -950,11 +1012,11 @@ const PublicMapPage: React.FC = () => {
                     ) : liveVenueData?.open_now !== undefined ? (
                       liveVenueData.open_now ? (
                         <span className="inline-flex items-center rounded-full bg-green-100 px-3 py-1 font-medium text-green-700">
-                          Open now
+                          {copy.openNow}
                         </span>
                       ) : (
                         <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 font-medium text-red-700">
-                          Closed
+                          {copy.closed}
                         </span>
                       )
                     ) : (
@@ -965,27 +1027,27 @@ const PublicMapPage: React.FC = () => {
                   </div>
 
                   <div className="flex justify-between items-center">
-                    <h4 className="text-sm font-bold">Availability</h4>
+                    <h4 className="text-sm font-bold">{copy.availability}</h4>
                     <div className="flex items-center gap-2 text-sm">
                       <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium ${
                         selectedVenue.totalChargersAvailable === 0
                           ? 'bg-red-50 text-red-700'
                           : 'bg-blue-50 text-blue-700'
                       }`}>
-                        <img src={dropLogo} alt="charger" className="h-4 w-4" />
-                        {selectedVenue.totalChargersAvailable} charger{selectedVenue.totalChargersAvailable === 1 ? '' : 's'}
+                        <img src={dropLogo} alt={copy.charger} className="h-4 w-4" />
+                        {selectedVenue.totalChargersAvailable} {selectedVenue.totalChargersAvailable === 1 ? copy.charger : copy.chargers}
                       </span>
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full font-medium whitespace-nowrap ${
                         selectedVenue.totalSlotsFree === 0
                           ? 'bg-red-50 text-red-700'
                           : 'bg-gray-100 text-gray-700'
-                      }`}>{selectedVenue.totalSlotsFree} slots</span>
+                      }`}>{selectedVenue.totalSlotsFree} {copy.slots}</span>
                     </div>
                   </div>
 
                   {selectedVenue.editorial_summary && (
                     <div>
-                      <h4 className="text-sm font-bold mb-1">About</h4>
+                      <h4 className="text-sm font-bold mb-1">{copy.about}</h4>
                       <p className="text-sm text-gray-600 leading-relaxed">{selectedVenue.editorial_summary}</p>
                     </div>
                   )}
@@ -993,7 +1055,7 @@ const PublicMapPage: React.FC = () => {
                   {selectedVenue.opening_hours_text && selectedVenue.opening_hours_text.length > 0 && (
                     <div>
                       <button onClick={() => setHoursExpanded(!hoursExpanded)} className="w-full flex justify-between items-center text-left">
-                        <h4 className="text-sm font-bold">Hours</h4>
+                        <h4 className="text-sm font-bold">{copy.hours}</h4>
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-5 h-5 text-gray-400 transition-transform ${hoursExpanded ? 'rotate-180' : ''}`}>
                           <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
                         </svg>
@@ -1012,9 +1074,9 @@ const PublicMapPage: React.FC = () => {
                   )}
 
                   <div className="flex justify-around items-center pt-3 border-t">
-                    <ActionButton href={`https://www.google.com/maps/dir/?api=1&destination=${selectedVenue.lat},${selectedVenue.lng}`} label="Directions" icon={<MdDirections className="w-6 h-6" />} />
-                    {selectedVenue.phone && <ActionButton href={`tel:${selectedVenue.phone}`} label="Call" icon={<MdPhone className="w-6 h-6" />} />}
-                    {selectedVenue.website && <ActionButton href={selectedVenue.website} label="Website" icon={<MdLanguage className="w-6 h-6" />} />}
+                    <ActionButton href={`https://www.google.com/maps/dir/?api=1&destination=${selectedVenue.lat},${selectedVenue.lng}`} label={copy.directions} icon={<MdDirections className="w-6 h-6" />} />
+                    {selectedVenue.phone && <ActionButton href={`tel:${selectedVenue.phone}`} label={copy.call} icon={<MdPhone className="w-6 h-6" />} />}
+                    {selectedVenue.website && <ActionButton href={selectedVenue.website} label={copy.website} icon={<MdLanguage className="w-6 h-6" />} />}
                   </div>
                 </div>
               </article>
@@ -1031,6 +1093,13 @@ const PublicMapPage: React.FC = () => {
             cityZoom={city?.mapZoom ?? 13}
             onSelectVenue={(id) => setSelectedId(id)}
             isLoaded={isLoaded}
+            labels={{
+              loadingMap: copy.loadingMap,
+              comingSoon: copy.comingSoon,
+              charger: copy.charger,
+              chargers: copy.chargers,
+              slots: copy.slots,
+            }}
           />
         </section>
       </main>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 150" role="img" aria-labelledby="title desc">
+  <title id="title">Paris, France</title>
+  <desc id="desc">Mot-symbole élégant de Paris avec un A inspiré de la tour Eiffel</desc>
+
+  <g fill="#24324A">
+    <text x="22" y="96" font-family="Didot, 'Bodoni MT', 'Times New Roman', serif" font-size="86" font-weight="600">P</text>
+    <text x="186" y="96" font-family="Didot, 'Bodoni MT', 'Times New Roman', serif" font-size="86" font-weight="600" letter-spacing="5">RIS</text>
+  </g>
+
+  <g fill="none" stroke="#24324A" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M137 28 99 96M137 28l39 68" stroke-width="8"/>
+    <path d="M112 73h50" stroke-width="6"/>
+    <path d="M137 28v68" stroke-width="4"/>
+    <path d="M91 97h94" stroke-width="7"/>
+  </g>
+
+  <path d="M32 111c92 13 254 13 396 0" fill="none" stroke="#D84A4A" stroke-width="4" stroke-linecap="round"/>
+  <text x="230" y="140" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" letter-spacing="7" fill="#6E7786">FRANCE</text>
+</svg>

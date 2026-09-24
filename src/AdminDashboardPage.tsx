@@ -5,6 +5,7 @@ import { useJsApiLoader } from "@react-google-maps/api";
 import { collection, getDocs, orderBy, query, doc, getDoc, updateDoc, addDoc, where, writeBatch, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
 import chargedropsLogo from "/chargedrop_logo.svg";
+import { STANDARD_RENTAL_PRICING, type RentalPricing } from "./cityConfig";
 import {
   NO_VENUE_PHOTO_URL,
   type PlacePhotoPreview,
@@ -28,6 +29,8 @@ type FullCityData = City & {
   sponsorName: string;
   logoUrl?: string;
   sponsorLogoUrl?: string;
+  locale?: string;
+  rentalPricing?: RentalPricing;
   // Other fields like mapCenter, mapZoom can be added here
 };
 
@@ -244,6 +247,8 @@ const EditCityView: React.FC<{ cityId: string; onBack: () => void }> = ({ cityId
     // Exclude 'id' from the data being saved to Firestore
     const dataToSave: Partial<FullCityData> = { ...city };
     delete dataToSave.id;
+    dataToSave.locale = city.locale || "en-US";
+    dataToSave.rentalPricing = { ...STANDARD_RENTAL_PRICING };
     try {
       await updateDoc(cityRef, dataToSave);
       alert("City updated successfully!");
@@ -280,6 +285,13 @@ const EditCityView: React.FC<{ cityId: string; onBack: () => void }> = ({ cityId
           <input type="text" name="sponsorName" value={city.sponsorName} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
         <div>
+          <label className="block text-sm font-medium text-gray-700">Public Language</label>
+          <select name="locale" value={city.locale || "en-US"} onChange={(e) => setCity({ ...city, locale: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm">
+            <option value="en-US">English</option>
+            <option value="fr-FR">Français</option>
+          </select>
+        </div>
+        <div>
           <label className="block text-sm font-medium text-gray-700">Logo URL</label>
           <input type="text" name="logoUrl" value={city.logoUrl || ''} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
@@ -288,6 +300,9 @@ const EditCityView: React.FC<{ cityId: string; onBack: () => void }> = ({ cityId
           <input type="text" name="sponsorLogoUrl" value={city.sponsorLogoUrl || ''} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
         <div className="flex justify-end gap-3 pt-4 border-t">
+          <p className="mr-auto self-center text-sm text-gray-600">
+            Standard rental pricing: $3 per hour, up to $35.
+          </p>
           <button
             type="button"
             onClick={onBack}
@@ -315,6 +330,7 @@ const AddCityView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBa
     sponsorName: "",
     logoUrl: "",
     sponsorLogoUrl: "",
+    locale: "en-US",
   });
 
   // State for city search
@@ -401,6 +417,7 @@ const AddCityView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBa
       },
       mapZoom: parseInt(mapZoom, 10),
       primaryColor: primaryColor,
+      rentalPricing: { ...STANDARD_RENTAL_PRICING },
     };
 
     try {
@@ -449,6 +466,13 @@ const AddCityView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBa
           <input type="text" name="sponsorName" value={newCity.sponsorName} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
         <div>
+          <label className="block text-sm font-medium text-gray-700">Public Language</label>
+          <select name="locale" value={newCity.locale} onChange={(e) => setNewCity({ ...newCity, locale: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm">
+            <option value="en-US">English</option>
+            <option value="fr-FR">Français</option>
+          </select>
+        </div>
+        <div>
           <label className="block text-sm font-medium text-gray-700">Logo URL</label>
           <input type="text" name="logoUrl" value={newCity.logoUrl} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
@@ -457,6 +481,9 @@ const AddCityView: React.FC<{ onBack: () => void; isLoaded: boolean }> = ({ onBa
           <input type="text" name="sponsorLogoUrl" value={newCity.sponsorLogoUrl} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
         </div>
         <div className="pt-4 border-t">
+          <p className="mb-4 text-sm text-gray-600">
+            Standard rental pricing: $3 per hour, up to $35.
+          </p>
           <h3 className="text-lg font-semibold mb-2">Map Settings</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>

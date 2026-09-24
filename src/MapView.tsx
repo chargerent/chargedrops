@@ -20,6 +20,13 @@ type MapViewProps = {
   cityZoom: number;
   onSelectVenue: (id: string | null) => void;
   isLoaded: boolean; // Add this prop
+  labels: {
+    loadingMap: string;
+    comingSoon: string;
+    charger: string;
+    chargers: string;
+    slots: string;
+  };
 };
 
 const containerStyle = {
@@ -40,6 +47,7 @@ const MapView: React.FC<MapViewProps> = ({
   cityZoom,
   onSelectVenue,
   isLoaded, // Receive this from the parent
+  labels,
 }) => {
   const mapRef = useRef<google.maps.Map | null>(null);
   const initialLoadRef = useRef(true);
@@ -57,7 +65,7 @@ const MapView: React.FC<MapViewProps> = ({
   }, [selectedVenue]);
 
   if (!isLoaded || !cityCenter) {
-    return <div>Loading Map...</div>;
+    return <div>{labels.loadingMap}</div>;
   }
 
   return (
@@ -111,7 +119,7 @@ const MapView: React.FC<MapViewProps> = ({
                 <span className="text-xs font-bold text-gray-800">{venue.venueName}</span>
                 {venue.comingSoon && (
                   <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
-                    Coming soon
+                    {labels.comingSoon}
                   </span>
                 )}
               </div>
@@ -119,13 +127,13 @@ const MapView: React.FC<MapViewProps> = ({
                 <span className={`flex items-center gap-1 ${
                   venue.totalChargersAvailable === 0 ? 'text-red-600' : 'text-blue-700'
                 }`}>
-                  <img src={dropLogo} alt="charger" className="h-4 w-4" />
-                  {venue.totalChargersAvailable} charger{venue.totalChargersAvailable === 1 ? '' : 's'}
+                  <img src={dropLogo} alt={labels.charger} className="h-4 w-4" />
+                  {venue.totalChargersAvailable} {venue.totalChargersAvailable === 1 ? labels.charger : labels.chargers}
                 </span>
                 <span className="text-gray-400">|</span>
                 <span className={`${
                   venue.totalSlotsFree === 0 ? 'text-red-600' : 'text-gray-500'
-                }`}>{venue.totalSlotsFree} slots</span>
+                }`}>{venue.totalSlotsFree} {labels.slots}</span>
               </div>
             </div>
             {/* The triangle pointing down */}
